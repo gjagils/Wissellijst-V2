@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 import uuid
 import threading
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect
+from spotipy.oauth2 import SpotifyOAuth
 
 from config import (
     load_wissellijsten, save_wissellijsten, get_wissellijst,
-    DATA_DIR,
+    DATA_DIR, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET,
+    SPOTIFY_REDIRECT_URI, SPOTIFY_SCOPE, CACHE_PATH,
 )
 from suggest import get_spotify_client, initial_fill
 
@@ -15,9 +17,45 @@ app = Flask(__name__)
 _tasks = {}
 
 
+def _get_auth_manager():
+    return SpotifyOAuth(
+        client_id=SPOTIFY_CLIENT_ID,
+        client_secret=SPOTIFY_CLIENT_SECRET,
+        redirect_uri=SPOTIFY_REDIRECT_URI,
+        scope=SPOTIFY_SCOPE,
+        cache_path=CACHE_PATH,
+        open_browser=False,
+    )
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/login")
+def login():
+    """Redirect naar Spotify login."""
+    auth_manager = _get_auth_manager()
+    auth_url = auth_manager.get_authorize_url()
+    return redirect(auth_url)
+
+
+@app.route("/callback")
+def callback():
+    """Ontvang de auth code van Spotify en sla het token op."""
+    code = request.args.get("code")
+    error = request.args.get("error")
+
+    if error:
+        return jsonify({"error": error}), 400
+
+    if not code:
+        return jsonify({"error": "Geen code ontvangen"}), 400
+
+    auth_manager = _get_auth_manager()
+    auth_manager.get_access_token(code)
+    return redirect("/")
 
 
 @app.route("/api/playlists")
