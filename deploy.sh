@@ -22,6 +22,25 @@ info()  { echo -e "${GREEN}[OK]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[!!]${NC} $1"; }
 error() { echo -e "${RED}[FOUT]${NC} $1"; }
 
+# Env vars uit draaiende Portainer container halen en als .env opslaan
+ENV_FILE="$PROJECT_DIR/.env"
+ENV_KEYS="SPOTIFY_CLIENT_ID SPOTIFY_CLIENT_SECRET SPOTIFY_REDIRECT_URI OPENAI_API_KEY"
+
+sync_env() {
+  if ! docker inspect "$CONTAINER" > /dev/null 2>&1; then
+    error "Container '$CONTAINER' niet gevonden. Kan env vars niet ophalen."
+    exit 1
+  fi
+  echo "# Auto-generated from Portainer container env vars" > "$ENV_FILE"
+  for KEY in $ENV_KEYS; do
+    VALUE=$(docker inspect "$CONTAINER" --format "{{range .Config.Env}}{{println .}}{{end}}" | grep "^${KEY}=" | head -1)
+    if [ -n "$VALUE" ]; then
+      echo "$VALUE" >> "$ENV_FILE"
+    fi
+  done
+  info ".env aangemaakt vanuit Portainer container"
+}
+
 case "${1:-help}" in
 
   deploy)
@@ -40,8 +59,11 @@ case "${1:-help}" in
     docker image prune -f
     info "Oude images opgeruimd"
 
-    echo "4/4 Container herstarten via stack..."
-    docker compose -f "$STACK_FILE" --env-file "$PROJECT_DIR/.env" up -d --force-recreate
+    echo "4/5 Env vars ophalen uit Portainer container..."
+    sync_env
+
+    echo "5/5 Container herstarten via stack..."
+    docker compose -f "$STACK_FILE" --env-file "$ENV_FILE" up -d --force-recreate
     info "Container herstart via stack met .env variabelen"
 
     echo ""
@@ -69,7 +91,8 @@ case "${1:-help}" in
   restart)
     echo "=== Container herstarten via stack ==="
     cd "$PROJECT_DIR"
-    docker compose -f "$STACK_FILE" --env-file "$PROJECT_DIR/.env" up -d --force-recreate
+    sync_env
+    docker compose -f "$STACK_FILE" --env-file "$ENV_FILE" up -d --force-recreate
     info "Container herstart via stack met .env variabelen"
     ;;
 
