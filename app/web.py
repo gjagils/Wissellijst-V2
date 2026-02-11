@@ -92,6 +92,8 @@ def api_playlists():
         ]
         return jsonify(playlists)
     except Exception as e:
+        if "auth_required" in str(e):
+            return jsonify({"error": "auth_required"}), 401
         return jsonify({"error": str(e)}), 500
 
 

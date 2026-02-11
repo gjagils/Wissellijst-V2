@@ -1,26 +1,10 @@
-import spotipy
-from spotipy.oauth2 import SpotifyOAuth
+import os
 
 from config import (
-    SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
-    SPOTIFY_SCOPE, CACHE_PATH,
     QUEUE_FILE, HISTORY_FILE,
     load_wissellijsten, get_history_file, get_queue_file,
 )
-from suggest import _parse_history_line
-import os
-
-
-def get_spotify_client():
-    auth_manager = SpotifyOAuth(
-        client_id=SPOTIFY_CLIENT_ID,
-        client_secret=SPOTIFY_CLIENT_SECRET,
-        redirect_uri=SPOTIFY_REDIRECT_URI,
-        scope=SPOTIFY_SCOPE,
-        cache_path=CACHE_PATH,
-        open_browser=False,
-    )
-    return spotipy.Spotify(auth_manager=auth_manager)
+from suggest import _parse_history_line, get_spotify_client
 
 
 def get_decade(release_date):
@@ -105,7 +89,7 @@ def rotate_and_regenerate(wl):
         wl: wissellijst dict met alle configuratie
     Returns: dict met resultaten
     """
-    from suggest import generate_block, get_spotify_client as get_sp
+    from suggest import generate_block
 
     queue_file = get_queue_file(wl["id"])
     history_file = get_history_file(wl["id"])
@@ -124,7 +108,7 @@ def rotate_and_regenerate(wl):
         return result
 
     # Stap 2: Genereer nieuw blokje voor de wachtrij
-    sp = get_sp()
+    sp = get_spotify_client()
     block = None
     max_retries = 3
     for _ in range(max_retries):
@@ -155,9 +139,8 @@ def _rotate_discovery(wl, queue_file, history_file):
     3. Roteer playlist (oud eruit, wachtrij erin)
     """
     from discovery import generate_discovery_block
-    from suggest import get_spotify_client as get_sp
 
-    sp = get_sp()
+    sp = get_spotify_client()
 
     # Stap 1: Genereer nieuw blok
     print(f"[discovery-rotate] Stap 1: Analyseren voor {wl['naam']}...",
