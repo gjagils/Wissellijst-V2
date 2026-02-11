@@ -10,10 +10,7 @@ services:
       - SPOTIFY_REDIRECT_URI=${SPOTIFY_REDIRECT_URI:-http://127.0.0.1:8888/callback}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
-      - wissellijst-data:/app/data
+      - /volume1/docker/wissellijst-v2/data:/app/data
     ports:
       - "9090:5000"
     restart: unless-stopped
-
-volumes:
-  wissellijst-data:
