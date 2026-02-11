@@ -234,13 +234,10 @@
             <label for="naam">Naam</label>
             <input type="text" id="naam" placeholder="Bijv. Muziek door de decennia">
 
-            <label>Spotify Playlist</label>
-            <div style="display:flex; gap:8px; align-items:start;">
-                <select id="playlist-select" style="flex:1;">
-                    <option value="">Laden...</option>
-                </select>
-                <button class="btn btn-secondary" style="font-size:0.85em; padding:10px 14px; white-space:nowrap; margin-bottom:12px;" onclick="toonNieuwePlaylistModal()">+ Nieuw</button>
-            </div>
+            <label for="playlist-select">Spotify Playlist</label>
+            <select id="playlist-select" onchange="onPlaylistSelectChange()">
+                <option value="">Laden...</option>
+            </select>
 
             <label>Categorieën (min. 2, max. 10)</label>
             <div id="categorieen-container"></div>
@@ -348,6 +345,19 @@
                 opt.textContent = `${p.naam} (${p.tracks} nummers)`;
                 sel.appendChild(opt);
             });
+            // "Nieuwe playlist" optie onderaan
+            const nieuwOpt = document.createElement('option');
+            nieuwOpt.value = '__nieuw__';
+            nieuwOpt.textContent = '+ Nieuwe playlist aanmaken...';
+            sel.appendChild(nieuwOpt);
+        }
+
+        function onPlaylistSelectChange() {
+            const sel = document.getElementById('playlist-select');
+            if (sel.value === '__nieuw__') {
+                sel.value = ''; // reset dropdown
+                toonNieuwePlaylistModal();
+            }
         }
 
         // --- Overzicht: wissellijsten tonen ---
