@@ -8,7 +8,7 @@ load_dotenv()
 SPOTIFY_CLIENT_ID = os.environ["SPOTIFY_CLIENT_ID"]
 SPOTIFY_CLIENT_SECRET = os.environ["SPOTIFY_CLIENT_SECRET"]
 SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
-SPOTIFY_SCOPE = "playlist-read-private playlist-modify-public playlist-modify-private"
+SPOTIFY_SCOPE = "playlist-read-private playlist-modify-public playlist-modify-private user-top-read"
 
 # OpenAI
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
@@ -54,3 +54,8 @@ def get_history_file(lijst_id):
 def get_queue_file(lijst_id):
     """Geef het pad naar het wachtrij-bestand voor een specifieke wissellijst."""
     return os.path.join(DATA_DIR, f"wachtrij_{lijst_id}.txt")
+
+
+def get_smaakprofiel_file(lijst_id):
+    """Geef het pad naar het smaakprofiel-bestand voor een specifieke wissellijst."""
+    return os.path.join(DATA_DIR, f"smaakprofiel_{lijst_id}.txt")
