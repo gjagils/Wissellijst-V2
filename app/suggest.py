@@ -20,6 +20,21 @@ def get_spotify_client():
         cache_path=CACHE_PATH,
         open_browser=False,
     )
+    # Check of er een geldige (of refreshbare) token is
+    token_info = auth_manager.get_cached_token()
+    if not token_info:
+        raise Exception("auth_required")
+
+    # Check of de cached token alle benodigde scopes bevat
+    cached_scopes = set((token_info.get('scope') or '').split())
+    required_scopes = set(SPOTIFY_SCOPE.split())
+    if not required_scopes.issubset(cached_scopes):
+        # Scopes gewijzigd - verwijder oude token
+        import os
+        if os.path.exists(CACHE_PATH):
+            os.remove(CACHE_PATH)
+        raise Exception("auth_required")
+
     return spotipy.Spotify(auth_manager=auth_manager)
 
 
