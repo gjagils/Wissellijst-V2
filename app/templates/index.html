@@ -237,6 +237,7 @@
             <div class="detail-cats" id="detail-cats"></div>
             <div class="btn-row">
                 <button class="btn btn-secondary" style="font-size:0.85em;padding:6px 14px;" onclick="bewerkLijst(activeLijstId)">Bewerken</button>
+                <button class="btn btn-danger" style="font-size:0.85em;padding:6px 14px;" onclick="herstartenLijst(activeLijstId)">Herstarten</button>
                 <button class="btn btn-danger" onclick="verwijderLijst(activeLijstId)">Verwijderen</button>
             </div>
         </div>
@@ -1021,6 +1022,26 @@
             await laadWissellijsten();
             toonMelding('Wissellijst verwijderd.', 'ok');
             toonView('overzicht');
+        }
+
+        async function herstartenLijst(id) {
+            if (!confirm('Weet je het zeker? Dit maakt de playlist leeg en wist alle historie en wachtrij.')) return;
+            try {
+                const res = await fetch(`/api/wissellijsten/${id}/herstarten`, { method: 'POST' });
+                if (res.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                const data = await res.json();
+                if (data.ok) {
+                    toonMelding(data.tekst, 'ok');
+                    toonDetail(id);
+                } else {
+                    toonMelding('Herstarten mislukt: ' + (data.error || 'onbekend'), 'fout');
+                }
+            } catch (e) {
+                toonMelding('Herstarten mislukt: ' + e.message, 'fout');
+            }
         }
 
         // --- Nieuwe Spotify Playlist ---

@@ -264,6 +264,61 @@ def api_wissellijst_verwijderen(lijst_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/wissellijsten/<lijst_id>/herstarten", methods=["POST"])
+def api_wissellijst_herstarten(lijst_id):
+    """Herstart een wissellijst: leeg de playlist, historie en wachtrij."""
+    wl = get_wissellijst(lijst_id)
+    if not wl:
+        return jsonify({"error": "Wissellijst niet gevonden"}), 404
+
+    try:
+        sp = get_spotify_client()
+    except Exception:
+        return jsonify({"error": "auth_required"}), 401
+
+    playlist_id = wl["playlist_id"]
+
+    # Playlist leeghalen
+    try:
+        items = sp.playlist_items(playlist_id, fields="items(track(uri)),next",
+                                  limit=100)
+        uris = []
+        for item in items["items"]:
+            if item.get("track") and item["track"].get("uri"):
+                uris.append(item["track"]["uri"])
+        while items.get("next"):
+            items = sp.next(items)
+            for item in items["items"]:
+                if item.get("track") and item["track"].get("uri"):
+                    uris.append(item["track"]["uri"])
+
+        if uris:
+            # Spotify max 100 per keer
+            for i in range(0, len(uris), 100):
+                sp.playlist_remove_all_occurrences_of_items(
+                    playlist_id, uris[i:i + 100])
+    except Exception as e:
+        return jsonify({"error": f"Kon playlist niet leeghalen: {e}"}), 500
+
+    # Historie leegmaken
+    history_file = get_history_file(lijst_id)
+    if os.path.exists(history_file):
+        with open(history_file, "w") as f:
+            f.write("")
+
+    # Wachtrij leegmaken
+    queue_file = get_queue_file(lijst_id)
+    if os.path.exists(queue_file):
+        with open(queue_file, "w") as f:
+            f.write("")
+
+    return jsonify({
+        "ok": True,
+        "verwijderd": len(uris),
+        "tekst": f"Playlist leeggemaakt ({len(uris)} tracks), historie en wachtrij gewist.",
+    })
+
+
 @app.route("/api/vullen", methods=["POST"])
 def api_vullen():
     """Start het initieel vullen van een wissellijst (async)."""
