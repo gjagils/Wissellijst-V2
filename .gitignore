@@ -1,0 +1,15 @@
+# Secrets
+.env
+
+# Spotify auth cache
+data/.cache
+.cache
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
