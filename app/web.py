@@ -14,6 +14,9 @@ from config import (
     SPOTIFY_SCOPE, CACHE_PATH,
 )
 from suggest import get_spotify_client, initial_fill, search_spotify, generate_block, _parse_history_line
+from discovery import (
+    build_taste_profile, generate_discovery_block, initial_fill_discovery,
+)
 from automation import rotate_and_regenerate
 
 app = Flask(__name__)
@@ -113,6 +116,17 @@ def api_playlist_aanmaken():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/smaakprofiel", methods=["POST"])
+def api_smaakprofiel():
+    """Genereer smaakprofiel op basis van Spotify luistergedrag."""
+    try:
+        sp = get_spotify_client()
+        profiel = build_taste_profile(sp)
+        return jsonify({"profiel": profiel})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/wissellijsten")
 def api_wissellijsten():
     """Haal alle opgeslagen wissellijst-configuraties op."""
@@ -165,21 +179,32 @@ def api_vullen():
     aantal_blokken = wl.get("aantal_blokken", 10)
     _tasks[task_id] = {"status": "bezig", "voortgang": 0, "tekst": "Starten...", "resultaat": None}
 
+    is_discovery = wl.get("type") == "discovery"
+
     def run():
         def on_progress(blok_nr, totaal, tekst):
             _tasks[task_id]["voortgang"] = round(blok_nr / totaal * 100)
             _tasks[task_id]["tekst"] = tekst
 
         try:
-            result = initial_fill(
-                playlist_id=wl["playlist_id"],
-                categorieen=wl["categorieen"],
-                history_file=get_history_file(lijst_id),
-                queue_file=get_queue_file(lijst_id),
-                max_per_artiest=wl.get("max_per_artiest", 0),
-                aantal_blokken=aantal_blokken,
-                on_progress=on_progress,
-            )
+            if is_discovery:
+                result = initial_fill_discovery(
+                    playlist_id=wl["playlist_id"],
+                    wl=wl,
+                    history_file=get_history_file(lijst_id),
+                    queue_file=get_queue_file(lijst_id),
+                    on_progress=on_progress,
+                )
+            else:
+                result = initial_fill(
+                    playlist_id=wl["playlist_id"],
+                    categorieen=wl.get("categorieen", []),
+                    history_file=get_history_file(lijst_id),
+                    queue_file=get_queue_file(lijst_id),
+                    max_per_artiest=wl.get("max_per_artiest", 0),
+                    aantal_blokken=aantal_blokken,
+                    on_progress=on_progress,
+                )
             _tasks[task_id]["status"] = "klaar"
             _tasks[task_id]["voortgang"] = 100
             _tasks[task_id]["tekst"] = f"{result['toegevoegd']} nummers toegevoegd ({result['blokken']} blokken)"
@@ -346,23 +371,37 @@ def api_wachtrij_genereer(lijst_id):
     task_id = str(uuid.uuid4())[:8]
     _tasks[task_id] = {"status": "bezig", "voortgang": 0, "tekst": "Wachtrij genereren...", "resultaat": None}
 
+    is_discovery = wl.get("type") == "discovery"
+
     def run():
         try:
             _tasks[task_id]["voortgang"] = 20
-            _tasks[task_id]["tekst"] = "Nieuw blokje genereren..."
+            _tasks[task_id]["tekst"] = ("Bronlijsten scannen..."
+                                        if is_discovery
+                                        else "Nieuw blokje genereren...")
 
             sp = get_spotify_client()
             history_file = get_history_file(lijst_id)
-            max_retries = 3
             block = None
 
-            for attempt in range(max_retries):
-                _tasks[task_id]["voortgang"] = 20 + (attempt * 25)
-                block = generate_block(sp, wl["playlist_id"], wl["categorieen"],
-                                       history_file=history_file,
-                                       max_per_artiest=wl.get("max_per_artiest", 0))
-                if block:
-                    break
+            if is_discovery:
+                _tasks[task_id]["voortgang"] = 40
+                _tasks[task_id]["tekst"] = "Tracks scoren met smaakprofiel..."
+                block = generate_discovery_block(
+                    sp, wl, history_file,
+                    block_size=wl.get("blok_grootte", 10),
+                )
+            else:
+                max_retries = 3
+                for attempt in range(max_retries):
+                    _tasks[task_id]["voortgang"] = 20 + (attempt * 25)
+                    block = generate_block(
+                        sp, wl["playlist_id"], wl.get("categorieen", []),
+                        history_file=history_file,
+                        max_per_artiest=wl.get("max_per_artiest", 0),
+                    )
+                    if block:
+                        break
 
             if block:
                 _write_queue(lijst_id, block)
@@ -372,7 +411,7 @@ def api_wachtrij_genereer(lijst_id):
                 _tasks[task_id]["resultaat"] = {"tracks": len(block)}
             else:
                 _tasks[task_id]["status"] = "fout"
-                _tasks[task_id]["tekst"] = "Kon geen blokje genereren na 3 pogingen"
+                _tasks[task_id]["tekst"] = "Kon geen blokje genereren"
 
         except Exception as e:
             _tasks[task_id]["status"] = "fout"

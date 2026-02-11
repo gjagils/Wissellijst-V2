@@ -20,12 +20,12 @@
         }
 
         label { display: block; color: #b3b3b3; font-size: 0.85em; margin-bottom: 4px; }
-        input, select {
+        input, select, textarea {
             width: 100%; padding: 10px 12px; border: 1px solid #333;
             border-radius: 6px; background: #2a2a2a; color: #e0e0e0;
-            font-size: 0.95em; margin-bottom: 12px;
+            font-size: 0.95em; margin-bottom: 12px; font-family: inherit;
         }
-        input:focus, select:focus { border-color: #1db954; outline: none; }
+        input:focus, select:focus, textarea:focus { border-color: #1db954; outline: none; }
 
         .btn {
             display: inline-block; padding: 10px 20px; border: none; border-radius: 6px;
@@ -48,7 +48,6 @@
         }
         .btn-back:hover { color: #1ed760; }
 
-        /* Overview playlist cards */
         .playlist-card {
             display: flex; align-items: center; gap: 14px;
             padding: 12px 14px; background: #2a2a2a; border-radius: 8px;
@@ -68,7 +67,6 @@
         .playlist-card-info { flex: 1; min-width: 0; }
         .playlist-card-naam { font-weight: 600; font-size: 1em; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .playlist-card-meta { color: #888; font-size: 0.8em; }
-        .playlist-card-actions { flex-shrink: 0; display: flex; gap: 6px; }
 
         .categorie-row { display: flex; align-items: center; gap: 8px; }
         .categorie-row input { margin-bottom: 0; flex: 1; }
@@ -114,7 +112,6 @@
         .melding-ok { background: #1a3a2a; color: #1db954; }
         .melding-fout { background: #3a1a1a; color: #e74c3c; }
 
-        /* Detail header */
         .detail-header {
             display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
         }
@@ -140,8 +137,10 @@
             background: #1db954; color: #000; padding: 4px 10px;
             border-radius: 12px; font-size: 0.8em; font-weight: 600;
         }
+        .detail-cat-tag.discovery {
+            background: #e040fb; color: #000;
+        }
 
-        /* Tabs for detail page */
         .tab-bar {
             display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #333;
         }
@@ -154,7 +153,6 @@
         .tab-btn:hover { color: #e0e0e0; }
         .tab-btn.active { color: #1db954; border-bottom-color: #1db954; }
 
-        /* New playlist modal */
         .modal-overlay {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0,0,0,0.7); display: none;
@@ -171,6 +169,37 @@
             color: #888; font-size: 0.8em; padding: 6px 10px;
             background: #2a2a2a; border-radius: 4px; margin-top: 4px;
         }
+
+        /* Bron playlists checkbox list */
+        .bron-lijst {
+            max-height: 240px; overflow-y: auto; background: #2a2a2a;
+            border-radius: 6px; padding: 8px; margin-bottom: 12px;
+        }
+        .bron-item {
+            display: flex; align-items: center; gap: 10px; padding: 6px 8px;
+            border-radius: 4px; cursor: pointer;
+        }
+        .bron-item:hover { background: #333; }
+        .bron-item input[type="checkbox"] {
+            width: auto; margin: 0; accent-color: #1db954;
+        }
+        .bron-item-naam { font-size: 0.9em; flex: 1; }
+        .bron-item-count { color: #888; font-size: 0.8em; }
+        .bron-count { color: #888; font-size: 0.8em; margin-bottom: 4px; }
+
+        .smaak-preview {
+            background: #2a2a2a; border-radius: 6px; padding: 12px;
+            font-size: 0.8em; color: #b3b3b3; white-space: pre-wrap;
+            max-height: 200px; overflow-y: auto; margin-bottom: 12px;
+            line-height: 1.4;
+        }
+
+        .type-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-size: 0.7em; font-weight: 600; vertical-align: middle; margin-left: 6px;
+        }
+        .type-badge.discovery { background: #e040fb; color: #000; }
+        .type-badge.categorie { background: #1db954; color: #000; }
     </style>
 </head>
 <body>
@@ -186,7 +215,8 @@
                 <p style="color:#888; font-size:0.9em;">Laden...</p>
             </div>
             <div class="btn-row" style="margin-top:12px;">
-                <button class="btn btn-secondary" onclick="nieuweLijst()">+ Nieuwe wissellijst</button>
+                <button class="btn btn-secondary" onclick="nieuweLijst('categorie')">+ Categorie lijst</button>
+                <button class="btn btn-secondary" onclick="nieuweLijst('discovery')">+ Discovery lijst</button>
             </div>
         </div>
     </div>
@@ -195,7 +225,6 @@
     <div id="view-detail" class="hidden">
         <button class="btn-back" onclick="naarOverzicht()">&#8592; Terug naar overzicht</button>
 
-        <!-- Header met playlist info -->
         <div class="card">
             <div class="detail-header">
                 <div id="detail-img-container"></div>
@@ -212,14 +241,12 @@
             </div>
         </div>
 
-        <!-- Tabs -->
         <div class="tab-bar">
             <button class="tab-btn active" onclick="toonTab('acties')" id="tab-acties">Acties</button>
             <button class="tab-btn" onclick="toonTab('wachtrij')" id="tab-wachtrij">Wachtrij</button>
             <button class="tab-btn" onclick="toonTab('historie')" id="tab-historie">Historie</button>
         </div>
 
-        <!-- Tab: Acties -->
         <div id="tab-content-acties" class="card">
             <h2>Acties</h2>
             <div class="btn-row" style="margin-bottom:12px;">
@@ -233,7 +260,6 @@
             <div id="schedule-status"></div>
         </div>
 
-        <!-- Tab: Wachtrij -->
         <div id="tab-content-wachtrij" class="card hidden">
             <h2>Volgend blokje</h2>
             <p class="status-tekst" id="wachtrij-status"></p>
@@ -247,7 +273,6 @@
             <div class="wachtrij-lijst" id="wachtrij-lijst"></div>
         </div>
 
-        <!-- Tab: Historie -->
         <div id="tab-content-historie" class="card hidden">
             <h2>Historie</h2>
             <p class="historie-count" id="historie-count"></p>
@@ -262,19 +287,41 @@
         <div class="card">
             <h2 id="editor-titel">Nieuwe Wissellijst</h2>
 
+            <input type="hidden" id="editor-type" value="categorie">
+
             <label for="naam">Naam</label>
             <input type="text" id="naam" placeholder="Bijv. Muziek door de decennia">
 
-            <label for="playlist-select">Spotify Playlist</label>
+            <label for="playlist-select">Doelplaylist (hier komen de nummers in)</label>
             <select id="playlist-select" onchange="onPlaylistSelectChange()">
                 <option value="">Laden...</option>
             </select>
 
-            <label>Categorieën (min. 2, max. 10)</label>
-            <div id="categorieen-container"></div>
-            <div class="btn-row" style="margin-top:8px;">
-                <button class="btn btn-secondary" onclick="categorieToevoegen()" style="font-size:0.85em; padding:6px 14px;">+ Categorie</button>
-                <button class="btn btn-secondary" onclick="categorieVerwijderen()" style="font-size:0.85em; padding:6px 14px;">- Categorie</button>
+            <!-- CATEGORIE velden -->
+            <div id="editor-categorie-velden">
+                <label>Categorie\u00ebn (min. 2, max. 10)</label>
+                <div id="categorieen-container"></div>
+                <div class="btn-row" style="margin-top:8px;">
+                    <button class="btn btn-secondary" onclick="categorieToevoegen()" style="font-size:0.85em; padding:6px 14px;">+ Categorie</button>
+                    <button class="btn btn-secondary" onclick="categorieVerwijderen()" style="font-size:0.85em; padding:6px 14px;">- Categorie</button>
+                </div>
+            </div>
+
+            <!-- DISCOVERY velden -->
+            <div id="editor-discovery-velden" class="hidden">
+                <label>Bronlijsten (vink de playlists aan om te scannen)</label>
+                <p class="bron-count" id="bron-count">0 geselecteerd</p>
+                <div class="bron-lijst" id="bron-playlists-lijst"></div>
+
+                <label for="blok-grootte">Tracks per blok</label>
+                <input type="number" id="blok-grootte" min="1" max="50" value="10" placeholder="10">
+
+                <label>Smaakprofiel</label>
+                <div class="btn-row" style="margin-bottom:8px;">
+                    <button class="btn btn-secondary" style="font-size:0.85em; padding:6px 14px;" id="btn-smaakprofiel" onclick="haalSmaakprofielOp()">Ophalen van Spotify</button>
+                </div>
+                <div class="smaak-preview" id="smaak-preview">Nog geen smaakprofiel opgehaald. Klik op de knop hierboven.</div>
+                <input type="hidden" id="smaakprofiel-data" value="">
             </div>
 
             <label for="aantal-blokken" style="margin-top:12px;">Aantal blokken</label>
@@ -426,7 +473,6 @@
                 opt.textContent = `${p.naam} (${p.tracks} nummers)`;
                 sel.appendChild(opt);
             });
-            // "Nieuwe playlist" optie onderaan
             const nieuwOpt = document.createElement('option');
             nieuwOpt.value = '__nieuw__';
             nieuwOpt.textContent = '+ Nieuwe playlist aanmaken...';
@@ -436,12 +482,60 @@
         function onPlaylistSelectChange() {
             const sel = document.getElementById('playlist-select');
             if (sel.value === '__nieuw__') {
-                sel.value = ''; // reset dropdown
+                sel.value = '';
                 toonNieuwePlaylistModal();
             }
         }
 
-        // --- Overzicht: wissellijsten tonen ---
+        // --- Bron playlists (discovery) ---
+        function vulBronPlaylists(geselecteerd = []) {
+            const container = document.getElementById('bron-playlists-lijst');
+            container.innerHTML = playlists.map(p => {
+                const checked = geselecteerd.includes(p.id) ? 'checked' : '';
+                return `
+                    <label class="bron-item">
+                        <input type="checkbox" class="bron-checkbox" value="${p.id}" ${checked} onchange="updateBronCount()">
+                        <span class="bron-item-naam">${p.naam}</span>
+                        <span class="bron-item-count">${p.tracks}</span>
+                    </label>
+                `;
+            }).join('');
+            updateBronCount();
+        }
+
+        function updateBronCount() {
+            const checked = document.querySelectorAll('.bron-checkbox:checked');
+            document.getElementById('bron-count').textContent = `${checked.length} geselecteerd`;
+        }
+
+        function getGeselecteerdeBronnen() {
+            return Array.from(document.querySelectorAll('.bron-checkbox:checked')).map(cb => cb.value);
+        }
+
+        // --- Smaakprofiel ---
+        async function haalSmaakprofielOp() {
+            const btn = document.getElementById('btn-smaakprofiel');
+            const preview = document.getElementById('smaak-preview');
+            btn.disabled = true;
+            preview.textContent = 'Smaakprofiel ophalen van Spotify...';
+
+            try {
+                const res = await fetch('/api/smaakprofiel', { method: 'POST' });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+
+                document.getElementById('smaakprofiel-data').value = data.profiel;
+                preview.textContent = data.profiel;
+                toonMelding('Smaakprofiel opgehaald!', 'ok');
+            } catch (e) {
+                preview.textContent = 'Fout bij ophalen: ' + e.message;
+                toonMelding('Smaakprofiel ophalen mislukt: ' + e.message, 'fout');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // --- Overzicht ---
         function toonLijsten() {
             const container = document.getElementById('lijsten-container');
             if (wissellijsten.length === 0) {
@@ -454,24 +548,33 @@
                 const playlistNaam = playlist ? playlist.naam : wl.playlist_id;
                 const playlistImage = playlist && playlist.image;
                 const blokken = wl.aantal_blokken || 10;
+                const isDiscovery = wl.type === 'discovery';
 
                 const imgHtml = playlistImage
                     ? `<img class="playlist-card-img" src="${playlistImage}" alt="">`
                     : `<div class="playlist-card-img-placeholder">&#9835;</div>`;
 
+                const typeBadge = isDiscovery
+                    ? '<span class="type-badge discovery">Discovery</span>'
+                    : '';
+
+                const metaText = isDiscovery
+                    ? `${playlistNaam} &middot; ${(wl.bron_playlists || []).length} bronnen &middot; ${blokken}&times;${wl.blok_grootte || 10}`
+                    : `${playlistNaam} &middot; ${(wl.categorieen || []).length} cat. &middot; ${blokken} blokken`;
+
                 return `
                     <div class="playlist-card" onclick="naarDetail('${wl.id}')">
                         ${imgHtml}
                         <div class="playlist-card-info">
-                            <div class="playlist-card-naam">${wl.naam}</div>
-                            <div class="playlist-card-meta">${playlistNaam} &middot; ${wl.categorieen.length} cat. &middot; ${blokken} blokken</div>
+                            <div class="playlist-card-naam">${wl.naam}${typeBadge}</div>
+                            <div class="playlist-card-meta">${metaText}</div>
                         </div>
                     </div>
                 `;
             }).join('');
         }
 
-        // --- Detail pagina vullen ---
+        // --- Detail pagina ---
         function vulDetailPagina() {
             const wl = wissellijsten.find(w => w.id === activeLijstId);
             if (!wl) return naarOverzicht();
@@ -480,7 +583,9 @@
             const playlistNaam = playlist ? playlist.naam : wl.playlist_id;
             const playlistImage = playlist && playlist.image;
             const aantalBlokken = wl.aantal_blokken || 10;
-            const verwachteTracks = wl.categorieen.length * aantalBlokken;
+            const isDiscovery = wl.type === 'discovery';
+            const blockSize = isDiscovery ? (wl.blok_grootte || 10) : (wl.categorieen || []).length;
+            const verwachteTracks = blockSize * aantalBlokken;
 
             // Header image
             const imgContainer = document.getElementById('detail-img-container');
@@ -491,18 +596,42 @@
             // Info
             document.getElementById('detail-naam').textContent = wl.naam;
             document.getElementById('detail-playlist').textContent = playlistNaam;
+
             const maxInfo = wl.max_per_artiest ? `Max ${wl.max_per_artiest}/artiest` : 'Geen artiest-limiet';
             const trackInfo = playlist ? `${playlist.tracks}/${verwachteTracks} tracks` : '';
-            document.getElementById('detail-meta').textContent = `${aantalBlokken} blokken \u00b7 ${maxInfo}${trackInfo ? ' \u00b7 ' + trackInfo : ''}`;
 
-            // Categorie tags
-            document.getElementById('detail-cats').innerHTML = wl.categorieen
-                .map(c => `<span class="detail-cat-tag">${c}</span>`)
-                .join('');
+            if (isDiscovery) {
+                const bronCount = (wl.bron_playlists || []).length;
+                document.getElementById('detail-meta').textContent =
+                    `Discovery \u00b7 ${aantalBlokken}\u00d7${wl.blok_grootte || 10} \u00b7 ${bronCount} bronnen \u00b7 ${maxInfo}${trackInfo ? ' \u00b7 ' + trackInfo : ''}`;
+            } else {
+                document.getElementById('detail-meta').textContent =
+                    `${aantalBlokken} blokken \u00b7 ${maxInfo}${trackInfo ? ' \u00b7 ' + trackInfo : ''}`;
+            }
+
+            // Tags
+            const catsDiv = document.getElementById('detail-cats');
+            if (isDiscovery) {
+                // Toon bron playlist namen als tags
+                const bronNamen = (wl.bron_playlists || []).map(bid => {
+                    const bp = playlists.find(p => p.id === bid);
+                    return bp ? bp.naam : bid;
+                });
+                catsDiv.innerHTML = bronNamen
+                    .map(n => `<span class="detail-cat-tag discovery">${n}</span>`)
+                    .join('');
+            } else {
+                catsDiv.innerHTML = (wl.categorieen || [])
+                    .map(c => `<span class="detail-cat-tag">${c}</span>`)
+                    .join('');
+            }
 
             // Vullen knop
             const btnVullen = document.getElementById('btn-vullen');
-            btnVullen.textContent = `Initieel vullen (${aantalBlokken} blokken)`;
+            const vulLabel = isDiscovery
+                ? `Scannen & vullen (${aantalBlokken}\u00d7${wl.blok_grootte || 10})`
+                : `Initieel vullen (${aantalBlokken} blokken)`;
+            btnVullen.textContent = vulLabel;
             if (playlist && playlist.tracks >= verwachteTracks) {
                 btnVullen.disabled = true;
                 btnVullen.textContent = `Playlist is vol (${verwachteTracks} tracks)`;
@@ -534,19 +663,44 @@
         }
 
         // --- Editor ---
-        function nieuweLijst() {
+        function setEditorType(type) {
+            document.getElementById('editor-type').value = type;
+            if (type === 'discovery') {
+                document.getElementById('editor-categorie-velden').classList.add('hidden');
+                document.getElementById('editor-discovery-velden').classList.remove('hidden');
+                document.getElementById('aantal-blokken').value = '5';
+                vulBronPlaylists();
+            } else {
+                document.getElementById('editor-categorie-velden').classList.remove('hidden');
+                document.getElementById('editor-discovery-velden').classList.add('hidden');
+                document.getElementById('aantal-blokken').value = '10';
+            }
+        }
+
+        function nieuweLijst(type) {
+            type = type || 'categorie';
             editLijstId = null;
             previousView = 'overzicht';
-            document.getElementById('editor-titel').textContent = 'Nieuwe Wissellijst';
+
+            const typeLabel = type === 'discovery' ? 'Discovery Wissellijst' : 'Nieuwe Wissellijst';
+            document.getElementById('editor-titel').textContent = typeLabel;
             document.getElementById('naam').value = '';
             document.getElementById('playlist-select').value = '';
             document.getElementById('max-per-artiest').value = '0';
-            document.getElementById('aantal-blokken').value = '10';
-            document.getElementById('rotatie-schema').value = 'uit';
+            document.getElementById('rotatie-schema').value = type === 'discovery' ? 'wekelijks' : 'uit';
             document.getElementById('rotatie-tijdstip').value = '08:00';
             document.getElementById('rotatie-dag').value = '0';
+            document.getElementById('blok-grootte').value = '10';
+            document.getElementById('smaakprofiel-data').value = '';
+            document.getElementById('smaak-preview').textContent = 'Nog geen smaakprofiel opgehaald. Klik op de knop hierboven.';
+
             onRotatieSchemaChange();
-            zetCategorieen(['80s', '90s', '00s', '10s', '20s']);
+            setEditorType(type);
+
+            if (type === 'categorie') {
+                zetCategorieen(['80s', '90s', '00s', '10s', '20s']);
+            }
+
             toonView('editor');
         }
 
@@ -554,16 +708,30 @@
             const wl = wissellijsten.find(w => w.id === id);
             editLijstId = id;
             previousView = activeLijstId ? 'detail' : 'overzicht';
-            document.getElementById('editor-titel').textContent = 'Bewerk Wissellijst';
+
+            const type = wl.type || 'categorie';
+            const typeLabel = type === 'discovery' ? 'Discovery Bewerken' : 'Bewerk Wissellijst';
+            document.getElementById('editor-titel').textContent = typeLabel;
             document.getElementById('naam').value = wl.naam;
             document.getElementById('playlist-select').value = wl.playlist_id;
             document.getElementById('max-per-artiest').value = wl.max_per_artiest || 0;
-            document.getElementById('aantal-blokken').value = wl.aantal_blokken || 10;
+            document.getElementById('aantal-blokken').value = wl.aantal_blokken || (type === 'discovery' ? 5 : 10);
             document.getElementById('rotatie-schema').value = wl.rotatie_schema || 'uit';
             document.getElementById('rotatie-tijdstip').value = wl.rotatie_tijdstip || '08:00';
             document.getElementById('rotatie-dag').value = wl.rotatie_dag || 0;
+            document.getElementById('blok-grootte').value = wl.blok_grootte || 10;
+            document.getElementById('smaakprofiel-data').value = wl.smaakprofiel || '';
+            document.getElementById('smaak-preview').textContent = wl.smaakprofiel || 'Nog geen smaakprofiel. Klik op ophalen.';
+
             onRotatieSchemaChange();
-            zetCategorieen(wl.categorieen);
+            setEditorType(type);
+
+            if (type === 'discovery') {
+                vulBronPlaylists(wl.bron_playlists || []);
+            } else {
+                zetCategorieen(wl.categorieen || []);
+            }
+
             toonView('editor');
         }
 
@@ -584,11 +752,7 @@
                 opties.classList.add('hidden');
             } else {
                 opties.classList.remove('hidden');
-                if (schema === 'wekelijks') {
-                    dagContainer.classList.remove('hidden');
-                } else {
-                    dagContainer.classList.add('hidden');
-                }
+                dagContainer.classList.toggle('hidden', schema !== 'wekelijks');
             }
         }
 
@@ -629,31 +793,48 @@
         }
 
         async function opslaan() {
+            const type = document.getElementById('editor-type').value;
             const naam = document.getElementById('naam').value.trim();
             const playlistId = document.getElementById('playlist-select').value;
-            const catInputs = document.querySelectorAll('.cat-input');
-            const categorieen = Array.from(catInputs).map(i => i.value.trim()).filter(Boolean);
 
             if (!naam) return toonMelding('Vul een naam in.', 'fout');
-            if (!playlistId) return toonMelding('Kies een playlist.', 'fout');
-            if (categorieen.length < 2) return toonMelding('Vul minimaal 2 categorieën in.', 'fout');
+            if (!playlistId) return toonMelding('Kies een doelplaylist.', 'fout');
 
             const maxPerArtiest = parseInt(document.getElementById('max-per-artiest').value) || 0;
-            const aantalBlokken = parseInt(document.getElementById('aantal-blokken').value) || 10;
+            const aantalBlokken = parseInt(document.getElementById('aantal-blokken').value) || (type === 'discovery' ? 5 : 10);
             const rotatieSchema = document.getElementById('rotatie-schema').value;
             const rotatieTijdstip = document.getElementById('rotatie-tijdstip').value || '08:00';
             const rotatieDag = parseInt(document.getElementById('rotatie-dag').value) || 0;
 
             const body = {
+                type,
                 naam,
                 playlist_id: playlistId,
-                categorieen,
                 max_per_artiest: maxPerArtiest,
                 aantal_blokken: aantalBlokken,
                 rotatie_schema: rotatieSchema,
                 rotatie_tijdstip: rotatieTijdstip,
                 rotatie_dag: rotatieDag,
             };
+
+            if (type === 'discovery') {
+                const bronPlaylists = getGeselecteerdeBronnen();
+                if (bronPlaylists.length === 0) return toonMelding('Selecteer minimaal 1 bronlijst.', 'fout');
+
+                const smaakprofiel = document.getElementById('smaakprofiel-data').value;
+                if (!smaakprofiel) return toonMelding('Haal eerst je smaakprofiel op.', 'fout');
+
+                body.bron_playlists = bronPlaylists;
+                body.smaakprofiel = smaakprofiel;
+                body.blok_grootte = parseInt(document.getElementById('blok-grootte').value) || 10;
+                body.categorieen = [];
+            } else {
+                const catInputs = document.querySelectorAll('.cat-input');
+                const categorieen = Array.from(catInputs).map(i => i.value.trim()).filter(Boolean);
+                if (categorieen.length < 2) return toonMelding('Vul minimaal 2 categorie\u00ebn in.', 'fout');
+                body.categorieen = categorieen;
+            }
+
             if (editLijstId) body.id = editLijstId;
 
             try {
@@ -665,7 +846,6 @@
                 const result = await res.json();
                 toonMelding('Wissellijst opgeslagen!', 'ok');
                 await laadWissellijsten();
-                // Navigate to the detail page of the saved list
                 naarDetail(result.id);
             } catch (e) {
                 toonMelding('Opslaan mislukt: ' + e.message, 'fout');
@@ -706,13 +886,9 @@
                 const result = await res.json();
                 if (result.error) throw new Error(result.error);
 
-                // Add to local list and refresh dropdown
                 playlists.unshift(result);
                 vulPlaylistSelect();
-
-                // Select the new playlist
                 document.getElementById('playlist-select').value = result.id;
-
                 document.getElementById('nieuwe-playlist-modal').classList.remove('visible');
                 toonMelding(`Playlist "${result.naam}" aangemaakt op Spotify!`, 'ok');
             } catch (e) {
@@ -743,7 +919,6 @@
                     document.getElementById('voortgang-tekst').textContent = status.tekst;
                 }, (status) => {
                     toonMelding(status.tekst, 'ok');
-                    // Herlaad playlists om track count te updaten
                     laadPlaylists().then(() => vulDetailPagina());
                 }, (status) => {
                     toonMelding('Fout: ' + status.tekst, 'fout');
@@ -954,7 +1129,6 @@
                     lijst.innerHTML = '';
                 } else {
                     count.textContent = `${entries.length} nummers in historie`;
-                    // Toon in omgekeerde volgorde (nieuwste eerst), maar bewaar originele index
                     const reversed = entries.map((e, i) => ({...e, origIndex: i})).reverse();
                     lijst.innerHTML = reversed.map(e => `
                         <div class="historie-item">

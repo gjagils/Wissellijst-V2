@@ -116,14 +116,23 @@ def rotate_and_regenerate(wl):
 
     # Stap 2: Genereer nieuw blokje voor de wachtrij
     sp = get_sp()
-    max_retries = 3
     block = None
-    for _ in range(max_retries):
-        block = generate_block(sp, wl["playlist_id"], wl["categorieen"],
-                               history_file=history_file,
-                               max_per_artiest=wl.get("max_per_artiest", 0))
-        if block:
-            break
+
+    if wl.get("type") == "discovery":
+        from discovery import generate_discovery_block
+        block = generate_discovery_block(
+            sp, wl, history_file,
+            block_size=wl.get("blok_grootte", 10),
+        )
+    else:
+        max_retries = 3
+        for _ in range(max_retries):
+            block = generate_block(sp, wl["playlist_id"],
+                                   wl.get("categorieen", []),
+                                   history_file=history_file,
+                                   max_per_artiest=wl.get("max_per_artiest", 0))
+            if block:
+                break
 
     if block:
         with open(queue_file, "w", encoding="utf-8") as f:
