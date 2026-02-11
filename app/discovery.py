@@ -74,16 +74,25 @@ def scan_source_playlists(sp, playlist_ids):
     """
     tracks_map = {}
 
-    for pid in playlist_ids:
+    for idx, pid in enumerate(playlist_ids, 1):
         try:
-            results = sp.playlist_items(pid, limit=100)
+            # Haal naam en tracks in 1 call via playlist_items (met naam uit eerste call)
+            results = sp.playlist_items(
+                pid,
+                fields='items(track(uri,name,artists(name),album(name))),next',
+                limit=100,
+            )
             items = list(results['items'])
             while results.get('next'):
                 results = sp.next(results)
                 items.extend(results['items'])
 
+            # Naam ophalen via playlist (alleen 'name' field, minimale data)
             playlist_info = sp.playlist(pid, fields='name')
             playlist_name = playlist_info['name']
+
+            print(f"  [{idx}/{len(playlist_ids)}] {playlist_name}: "
+                  f"{len(items)} tracks", flush=True)
 
             for item in items:
                 track = item.get('track')
@@ -109,8 +118,10 @@ def scan_source_playlists(sp, playlist_ids):
                         'bronnen': [playlist_name],
                     }
         except Exception as e:
-            print(f"Fout bij scannen playlist {pid}: {e}")
+            print(f"Fout bij scannen playlist {pid}: {e}", flush=True)
 
+    print(f"  Totaal: {len(tracks_map)} unieke tracks uit "
+          f"{len(playlist_ids)} bronlijsten", flush=True)
     return tracks_map
 
 
@@ -123,6 +134,24 @@ def _load_history_uris(history_file):
                 parts = line.strip().rsplit(' - ', 1)
                 if len(parts) == 2 and parts[1].startswith('spotify:'):
                     uris.add(parts[1])
+    return uris
+
+
+def _load_queue_uris(queue_file):
+    """Lees wachtrij en return set van URIs."""
+    uris = set()
+    if queue_file and os.path.exists(queue_file):
+        with open(queue_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                # Volledig formaat: categorie - artiest - titel - uri
+                parts = line.rsplit(' - ', 1)
+                if len(parts) == 2 and parts[1].startswith('spotify:'):
+                    uris.add(parts[1])
+                elif line.startswith('spotify:'):
+                    uris.add(line)
     return uris
 
 
@@ -190,6 +219,10 @@ Antwoord ALLEEN met een JSON array, geen andere tekst:
 [{{"i": 0, "s": 8}}, {{"i": 1, "s": 5}}, ...]"""
 
     try:
+        import time
+        t0 = time.time()
+        print(f"  GPT scoring {len(candidates)} tracks...", flush=True)
+
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -216,10 +249,14 @@ Antwoord ALLEEN met een JSON array, geen andere tekst:
             if 0 <= idx < len(candidates):
                 scores[idx] = score
 
+        elapsed = time.time() - t0
+        avg = (sum(scores.values()) / len(scores)) if scores else 0
+        print(f"  GPT klaar in {elapsed:.1f}s — {len(scores)} scores, "
+              f"gemiddeld {avg:.1f}", flush=True)
         return scores
 
     except Exception as e:
-        print(f"GPT scoring fout: {e}")
+        print(f"GPT scoring fout: {e}", flush=True)
         # Fallback: geef alles een 5
         return {i: 5 for i in range(len(candidates))}
 
@@ -242,6 +279,22 @@ def rank_and_select(candidates, scores, count=10, max_per_artiest=0):
         })
 
     ranked.sort(key=lambda x: -x['combined_score'])
+
+    # Log de top ranglijst
+    top_n = min(30, len(ranked))
+    print(f"\n{'='*60}", flush=True)
+    print(f"  DISCOVERY RANGLIJST (top {top_n} van {len(ranked)})", flush=True)
+    print(f"  {'#':>3}  {'Score':>5}  {'Smaak':>5}  {'Overlap':>7}  Track",
+          flush=True)
+    print(f"  {'-'*55}", flush=True)
+    for pos, track in enumerate(ranked[:top_n], 1):
+        overlap_count = track.get('overlap', 1)
+        marker = " *" if pos <= count else ""
+        print(f"  {pos:>3}  {track['combined_score']:>5.1f}  "
+              f"{track['smaak_score']:>5}  {overlap_count:>3}x      "
+              f"{track['artiest']} - {track['titel']}{marker}", flush=True)
+    print(f"  (* = geselecteerd voor blok)", flush=True)
+    print(f"{'='*60}\n", flush=True)
 
     # Selecteer met optionele artiest-limiet
     selected = []
@@ -274,36 +327,63 @@ def generate_discovery_block(sp, wl, history_file, block_size=10):
     Returns: lijst van track dicts [{categorie, artiest, titel, uri}] of None
     """
     source_ids = wl.get('bron_playlists', [])
-    taste_profile = wl.get('smaakprofiel', '')
     max_per_artiest = wl.get('max_per_artiest', 0)
 
+    import time
+
+    # Smaakprofiel: eerst uit bestand, dan uit config
+    from config import get_smaakprofiel_file
+    profiel_file = get_smaakprofiel_file(wl['id'])
+    taste_profile = ''
+    if os.path.exists(profiel_file):
+        with open(profiel_file, 'r', encoding='utf-8') as f:
+            taste_profile = f.read().strip()
+    if not taste_profile:
+        taste_profile = wl.get('smaakprofiel', '')
+
     if not source_ids:
-        print("Geen bronlijsten geconfigureerd")
+        print("[discovery] Geen bronlijsten geconfigureerd", flush=True)
         return None
 
     if not taste_profile:
-        print("Geen smaakprofiel beschikbaar")
+        print("[discovery] Geen smaakprofiel beschikbaar", flush=True)
         return None
 
+    t_start = time.time()
+
     # Stap 1: Scan bronlijsten
+    print(f"[discovery] Stap 1: {len(source_ids)} bronlijsten scannen...",
+          flush=True)
     all_tracks = scan_source_playlists(sp, source_ids)
 
-    # Stap 2: Filter reeds gebruikte tracks
+    # Stap 2: Filter reeds gebruikte tracks (historie + playlist + wachtrij)
+    from config import get_queue_file
     history_uris = _load_history_uris(history_file)
     playlist_uris = _load_playlist_uris(sp, wl['playlist_id'])
-    used_uris = history_uris | playlist_uris
+    queue_uris = _load_queue_uris(get_queue_file(wl['id']))
+    used_uris = history_uris | playlist_uris | queue_uris
 
     candidates = [t for t in all_tracks.values() if t['uri'] not in used_uris]
+    print(f"[discovery] Stap 2: {len(candidates)} kandidaten na filter "
+          f"(historie={len(history_uris)}, playlist={len(playlist_uris)}, "
+          f"wachtrij={len(queue_uris)})", flush=True)
 
     if not candidates:
-        print("Geen nieuwe tracks gevonden in bronlijsten")
+        print("[discovery] Geen nieuwe tracks gevonden in bronlijsten",
+              flush=True)
         return None
 
     # Stap 3: Score met GPT (in batches)
     all_scores = {}
     batch_size = 100
+    n_batches = (len(candidates) + batch_size - 1) // batch_size
+    print(f"[discovery] Stap 3: GPT scoring in {n_batches} batch(es)...",
+          flush=True)
     for batch_start in range(0, len(candidates), batch_size):
         batch = candidates[batch_start:batch_start + batch_size]
+        batch_nr = batch_start // batch_size + 1
+        print(f"  Batch {batch_nr}/{n_batches} "
+              f"({len(batch)} tracks)...", flush=True)
         batch_scores = score_candidates(batch, taste_profile)
         for local_idx, score in batch_scores.items():
             all_scores[batch_start + local_idx] = score
@@ -311,6 +391,10 @@ def generate_discovery_block(sp, wl, history_file, block_size=10):
     # Stap 4: Rank en selecteer
     selected = rank_and_select(candidates, all_scores, count=block_size,
                                max_per_artiest=max_per_artiest)
+
+    elapsed = time.time() - t_start
+    print(f"[discovery] Klaar in {elapsed:.1f}s — {len(selected)} tracks "
+          f"geselecteerd", flush=True)
 
     if not selected:
         return None
@@ -343,13 +427,28 @@ def initial_fill_discovery(playlist_id, wl, history_file, queue_file,
     """
     from suggest import get_spotify_client
 
+    import time
+    t_start = time.time()
+
     sp = get_spotify_client()
     source_ids = wl.get('bron_playlists', [])
-    taste_profile = wl.get('smaakprofiel', '')
     max_per_artiest = wl.get('max_per_artiest', 0)
+
+    # Smaakprofiel: eerst uit bestand, dan uit config
+    from config import get_smaakprofiel_file
+    profiel_file = get_smaakprofiel_file(wl['id'])
+    taste_profile = ''
+    if os.path.exists(profiel_file):
+        with open(profiel_file, 'r', encoding='utf-8') as f:
+            taste_profile = f.read().strip()
+    if not taste_profile:
+        taste_profile = wl.get('smaakprofiel', '')
     aantal_blokken = wl.get('aantal_blokken', 5)
     block_size = wl.get('blok_grootte', 10)
     totaal = aantal_blokken + 1  # +1 voor wachtrij
+
+    print(f"[discovery-fill] Start: {len(source_ids)} bronlijsten, "
+          f"{aantal_blokken} blokken x {block_size} tracks", flush=True)
 
     if on_progress:
         on_progress(0, totaal, "Bronlijsten scannen...")
@@ -363,6 +462,8 @@ def initial_fill_discovery(playlist_id, wl, history_file, queue_file,
     used_uris = history_uris | playlist_uris
 
     candidates = [t for t in all_tracks.values() if t['uri'] not in used_uris]
+    print(f"[discovery-fill] {len(candidates)} kandidaten na filter "
+          f"({len(used_uris)} al gebruikt)", flush=True)
 
     if not candidates:
         return {
@@ -377,8 +478,15 @@ def initial_fill_discovery(playlist_id, wl, history_file, queue_file,
     # Stap 3: Score alles met GPT (in batches)
     all_scores = {}
     batch_size = 100
+    n_batches = (len(candidates) + batch_size - 1) // batch_size
+    print(f"[discovery-fill] GPT scoring in {n_batches} batch(es)...",
+          flush=True)
     for batch_start in range(0, len(candidates), batch_size):
         batch = candidates[batch_start:batch_start + batch_size]
+        batch_nr = batch_start // batch_size + 1
+        if on_progress:
+            on_progress(0, totaal,
+                        f"Scoring batch {batch_nr}/{n_batches}...")
         batch_scores = score_candidates(batch, taste_profile)
         for local_idx, score in batch_scores.items():
             all_scores[batch_start + local_idx] = score
@@ -437,9 +545,15 @@ def initial_fill_discovery(playlist_id, wl, history_file, queue_file,
                         f"{t['titel']} - {t['uri']}\n"
                     )
 
+    elapsed = time.time() - t_start
+    blokken_ok = len(alle_tracks_added) // block_size if block_size else 0
+    print(f"[discovery-fill] Klaar in {elapsed:.1f}s — "
+          f"{len(alle_tracks_added)} tracks, {blokken_ok} blokken, "
+          f"{mislukt} mislukt", flush=True)
+
     return {
         "toegevoegd": len(alle_tracks_added),
-        "blokken": len(alle_tracks_added) // block_size if block_size else 0,
+        "blokken": blokken_ok,
         "mislukt": mislukt,
         "wachtrij_klaar": mislukt < 2,
     }

@@ -9,7 +9,8 @@ from spotipy.oauth2 import SpotifyOAuth
 
 from config import (
     load_wissellijsten, save_wissellijsten, get_wissellijst,
-    get_history_file, get_queue_file, DATA_DIR, HISTORY_FILE,
+    get_history_file, get_queue_file, get_smaakprofiel_file,
+    DATA_DIR, HISTORY_FILE,
     SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
     SPOTIFY_SCOPE, CACHE_PATH,
 )
@@ -94,6 +95,22 @@ def api_playlists():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/playlists/<playlist_id>")
+def api_playlist_info(playlist_id):
+    """Haal info op over een specifieke Spotify playlist."""
+    try:
+        sp = get_spotify_client()
+        p = sp.playlist(playlist_id, fields='id,name,tracks(total),images')
+        return jsonify({
+            "id": p["id"],
+            "naam": p["name"],
+            "tracks": p["tracks"]["total"],
+            "image": p["images"][0]["url"] if p.get("images") else None,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/playlists", methods=["POST"])
 def api_playlist_aanmaken():
     """Maak een nieuwe Spotify playlist aan."""
@@ -117,12 +134,86 @@ def api_playlist_aanmaken():
 
 
 @app.route("/api/smaakprofiel", methods=["POST"])
-def api_smaakprofiel():
-    """Genereer smaakprofiel op basis van Spotify luistergedrag."""
+def api_smaakprofiel_generiek():
+    """Genereer smaakprofiel van Spotify (zonder aan lijst te koppelen)."""
     try:
         sp = get_spotify_client()
         profiel = build_taste_profile(sp)
         return jsonify({"profiel": profiel})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/wissellijsten/<lijst_id>/smaakprofiel", methods=["GET"])
+def api_smaakprofiel_get(lijst_id):
+    """Haal het opgeslagen smaakprofiel op voor een wissellijst."""
+    profiel_file = get_smaakprofiel_file(lijst_id)
+    if os.path.exists(profiel_file):
+        with open(profiel_file, 'r', encoding='utf-8') as f:
+            profiel = f.read()
+        return jsonify({"profiel": profiel})
+    return jsonify({"profiel": ""})
+
+
+@app.route("/api/wissellijsten/<lijst_id>/smaakprofiel/ophalen", methods=["POST"])
+def api_smaakprofiel_ophalen(lijst_id):
+    """Haal smaakprofiel op van Spotify en sla op (behoudt eigen toevoegingen)."""
+    try:
+        sp = get_spotify_client()
+        spotify_profiel = build_taste_profile(sp)
+
+        # Lees bestaand profiel om eigen toevoegingen te behouden
+        profiel_file = get_smaakprofiel_file(lijst_id)
+        eigen_sectie = ""
+        if os.path.exists(profiel_file):
+            with open(profiel_file, 'r', encoding='utf-8') as f:
+                bestaand = f.read()
+            # Eigen toevoegingen staan na de marker
+            marker = "=== EIGEN TOEVOEGINGEN ==="
+            if marker in bestaand:
+                eigen_sectie = bestaand[bestaand.index(marker):]
+
+        # Combineer Spotify + eigen
+        volledig = spotify_profiel
+        if eigen_sectie:
+            volledig += "\n\n" + eigen_sectie
+
+        with open(profiel_file, 'w', encoding='utf-8') as f:
+            f.write(volledig)
+
+        # Update ook in wissellijst config
+        data = load_wissellijsten()
+        for i, w in enumerate(data["wissellijsten"]):
+            if w["id"] == lijst_id:
+                data["wissellijsten"][i]["smaakprofiel"] = volledig
+                break
+        save_wissellijsten(data)
+
+        return jsonify({"profiel": volledig})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/wissellijsten/<lijst_id>/smaakprofiel", methods=["POST"])
+def api_smaakprofiel_opslaan(lijst_id):
+    """Sla het (bewerkte) smaakprofiel op voor een wissellijst."""
+    try:
+        body = request.get_json()
+        profiel = body.get("profiel", "")
+
+        profiel_file = get_smaakprofiel_file(lijst_id)
+        with open(profiel_file, 'w', encoding='utf-8') as f:
+            f.write(profiel)
+
+        # Update ook in wissellijst config
+        data = load_wissellijsten()
+        for i, w in enumerate(data["wissellijsten"]):
+            if w["id"] == lijst_id:
+                data["wissellijsten"][i]["smaakprofiel"] = profiel
+                break
+        save_wissellijsten(data)
+
+        return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -151,6 +242,12 @@ def api_wissellijst_opslaan():
         # Nieuwe aanmaken
         body["id"] = str(uuid.uuid4())[:8]
         data["wissellijsten"].append(body)
+
+    # Sla smaakprofiel ook op in apart bestand als het er is
+    if body.get("smaakprofiel"):
+        profiel_file = get_smaakprofiel_file(body["id"])
+        with open(profiel_file, 'w', encoding='utf-8') as f:
+            f.write(body["smaakprofiel"])
 
     save_wissellijsten(data)
     return jsonify(body)
@@ -427,20 +524,37 @@ def api_wachtrij_genereer(lijst_id):
 
 @app.route("/api/wissellijsten/<lijst_id>/roteren", methods=["POST"])
 def api_roteren(lijst_id):
-    """Start een rotatie voor een wissellijst (async)."""
+    """Start een rotatie voor een wissellijst (async).
+
+    Discovery: eerst analyseren (nieuw blok), dan roteren.
+    Categorie: roteren, dan nieuw blok genereren.
+    """
     wl = get_wissellijst(lijst_id)
     if not wl:
         return jsonify({"error": "Wissellijst niet gevonden"}), 404
 
+    is_discovery = wl.get("type") == "discovery"
     task_id = str(uuid.uuid4())[:8]
-    _tasks[task_id] = {"status": "bezig", "voortgang": 0, "tekst": "Roteren...", "resultaat": None}
+    _tasks[task_id] = {"status": "bezig", "voortgang": 0,
+                       "tekst": "Starten...", "resultaat": None}
 
     def run():
         try:
-            _tasks[task_id]["voortgang"] = 30
-            _tasks[task_id]["tekst"] = "Oudste blok verwijderen en wachtrij toevoegen..."
+            if is_discovery:
+                # Discovery: eerst analyseren, dan roteren
+                _tasks[task_id]["voortgang"] = 10
+                _tasks[task_id]["tekst"] = "Bronlijsten scannen & analyseren..."
 
-            result = rotate_and_regenerate(wl)
+                result = rotate_and_regenerate(wl)
+
+                _tasks[task_id]["voortgang"] = 90
+                _tasks[task_id]["tekst"] = "Rotatie voltooien..."
+            else:
+                # Categorie: roteer + genereer nieuw
+                _tasks[task_id]["voortgang"] = 30
+                _tasks[task_id]["tekst"] = "Oudste blok verwijderen en wachtrij toevoegen..."
+
+                result = rotate_and_regenerate(wl)
 
             _tasks[task_id]["voortgang"] = 100
             _tasks[task_id]["status"] = "klaar"

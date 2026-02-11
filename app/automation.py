@@ -98,6 +98,9 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None):
 def rotate_and_regenerate(wl):
     """Roteer een wissellijst en genereer een nieuw wachtrij-blok.
 
+    Voor discovery: eerst nieuw blok analyseren, dan pas roteren.
+    Voor categorie: eerst roteren, dan nieuw blok genereren.
+
     Args:
         wl: wissellijst dict met alle configuratie
     Returns: dict met resultaten
@@ -106,6 +109,12 @@ def rotate_and_regenerate(wl):
 
     queue_file = get_queue_file(wl["id"])
     history_file = get_history_file(wl["id"])
+    is_discovery = wl.get("type") == "discovery"
+
+    if is_discovery:
+        return _rotate_discovery(wl, queue_file, history_file)
+
+    # --- Categorie flow: roteer eerst, genereer daarna ---
 
     # Stap 1: Roteer
     result = rotate_playlist(wl["playlist_id"], queue_file=queue_file,
@@ -117,22 +126,14 @@ def rotate_and_regenerate(wl):
     # Stap 2: Genereer nieuw blokje voor de wachtrij
     sp = get_sp()
     block = None
-
-    if wl.get("type") == "discovery":
-        from discovery import generate_discovery_block
-        block = generate_discovery_block(
-            sp, wl, history_file,
-            block_size=wl.get("blok_grootte", 10),
-        )
-    else:
-        max_retries = 3
-        for _ in range(max_retries):
-            block = generate_block(sp, wl["playlist_id"],
-                                   wl.get("categorieen", []),
-                                   history_file=history_file,
-                                   max_per_artiest=wl.get("max_per_artiest", 0))
-            if block:
-                break
+    max_retries = 3
+    for _ in range(max_retries):
+        block = generate_block(sp, wl["playlist_id"],
+                               wl.get("categorieen", []),
+                               history_file=history_file,
+                               max_per_artiest=wl.get("max_per_artiest", 0))
+        if block:
+            break
 
     if block:
         with open(queue_file, "w", encoding="utf-8") as f:
@@ -143,6 +144,48 @@ def rotate_and_regenerate(wl):
         result["nieuw_blok"] = False
         result["tekst"] += " (Nieuw wachtrij-blok genereren mislukt)"
 
+    return result
+
+
+def _rotate_discovery(wl, queue_file, history_file):
+    """Discovery rotatie: eerst analyseren, dan roteren.
+
+    1. Genereer nieuw blok (scan bronlijsten + GPT scoring)
+    2. Schrijf naar wachtrij
+    3. Roteer playlist (oud eruit, wachtrij erin)
+    """
+    from discovery import generate_discovery_block
+    from suggest import get_spotify_client as get_sp
+
+    sp = get_sp()
+
+    # Stap 1: Genereer nieuw blok
+    print(f"[discovery-rotate] Stap 1: Analyseren voor {wl['naam']}...",
+          flush=True)
+    block = generate_discovery_block(
+        sp, wl, history_file,
+        block_size=wl.get("blok_grootte", 10),
+    )
+
+    if not block:
+        return {
+            "status": "fout",
+            "tekst": "Kon geen nieuw blok genereren uit bronlijsten.",
+        }
+
+    # Stap 2: Schrijf naar wachtrij
+    with open(queue_file, "w", encoding="utf-8") as f:
+        for t in block:
+            f.write(f"{t['categorie']} - {t['artiest']} - "
+                    f"{t['titel']} - {t['uri']}\n")
+    print(f"[discovery-rotate] Stap 2: {len(block)} tracks in wachtrij",
+          flush=True)
+
+    # Stap 3: Roteer
+    print(f"[discovery-rotate] Stap 3: Roteren...", flush=True)
+    result = rotate_playlist(wl["playlist_id"], queue_file=queue_file,
+                             history_file=history_file)
+    result["nieuw_blok"] = True
     return result
 
 
