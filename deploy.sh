@@ -10,6 +10,7 @@ set -e
 CONTAINER="wissellijst-v2"
 IMAGE="wissellijst-v2:latest"
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+STACK_FILE="$PROJECT_DIR/portainer-stack.yml"
 
 # Kleurtjes
 GREEN='\033[0;32m'
@@ -39,24 +40,9 @@ case "${1:-help}" in
     docker image prune -f
     info "Oude images opgeruimd"
 
-    echo "4/4 Container herstarten..."
-    ENV_ARGS=""
-    if docker inspect "$CONTAINER" > /dev/null 2>&1; then
-      ENV_ARGS=$(docker inspect "$CONTAINER" --format '{{range .Config.Env}}-e {{.}} {{end}}')
-    else
-      error "Container '$CONTAINER' niet gevonden. Start eerst via Portainer."
-      exit 1
-    fi
-    docker stop "$CONTAINER" 2>/dev/null || true
-    docker rm "$CONTAINER" 2>/dev/null || true
-    eval docker run -d \
-      --name "$CONTAINER" \
-      $ENV_ARGS \
-      -v /volume1/docker/wissellijst-v2/data:/app/data \
-      -p 9090:5000 \
-      --restart unless-stopped \
-      "$IMAGE"
-    info "Container herstart met nieuw image"
+    echo "4/4 Container herstarten via stack..."
+    docker compose -f "$STACK_FILE" --env-file "$PROJECT_DIR/.env" up -d --force-recreate
+    info "Container herstart via stack met .env variabelen"
 
     echo ""
     info "Deploy compleet! App draait op poort 9090"
@@ -81,26 +67,10 @@ case "${1:-help}" in
     ;;
 
   restart)
-    echo "=== Container herstarten met nieuw image ==="
-    # Stop, verwijder, en herstart met dezelfde config via Portainer env vars
-    # Env vars ophalen uit de draaiende container
-    ENV_ARGS=""
-    if docker inspect "$CONTAINER" > /dev/null 2>&1; then
-      ENV_ARGS=$(docker inspect "$CONTAINER" --format '{{range .Config.Env}}-e {{.}} {{end}}')
-    else
-      error "Container '$CONTAINER' niet gevonden. Start via Portainer."
-      exit 1
-    fi
-    docker stop "$CONTAINER" 2>/dev/null || true
-    docker rm "$CONTAINER" 2>/dev/null || true
-    eval docker run -d \
-      --name "$CONTAINER" \
-      $ENV_ARGS \
-      -v /volume1/docker/wissellijst-v2/data:/app/data \
-      -p 9090:5000 \
-      --restart unless-stopped \
-      "$IMAGE"
-    info "Container herstart met nieuw image"
+    echo "=== Container herstarten via stack ==="
+    cd "$PROJECT_DIR"
+    docker compose -f "$STACK_FILE" --env-file "$PROJECT_DIR/.env" up -d --force-recreate
+    info "Container herstart via stack met .env variabelen"
     ;;
 
   logs)
