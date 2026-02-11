@@ -2,15 +2,19 @@
 import os
 import uuid
 import threading
+import datetime
+import time
 from flask import Flask, render_template, request, jsonify, redirect
 from spotipy.oauth2 import SpotifyOAuth
 
 from config import (
     load_wissellijsten, save_wissellijsten, get_wissellijst,
-    get_history_file, DATA_DIR, HISTORY_FILE, SPOTIFY_CLIENT_ID,
-    SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI, SPOTIFY_SCOPE, CACHE_PATH,
+    get_history_file, get_queue_file, DATA_DIR, HISTORY_FILE,
+    SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
+    SPOTIFY_SCOPE, CACHE_PATH,
 )
-from suggest import get_spotify_client, initial_fill, _parse_history_line
+from suggest import get_spotify_client, initial_fill, search_spotify, _parse_history_line
+from automation import rotate_and_regenerate
 
 app = Flask(__name__)
 
@@ -158,6 +162,7 @@ def api_vullen():
         return jsonify({"error": "Wissellijst niet gevonden"}), 404
 
     task_id = str(uuid.uuid4())[:8]
+    aantal_blokken = wl.get("aantal_blokken", 10)
     _tasks[task_id] = {"status": "bezig", "voortgang": 0, "tekst": "Starten...", "resultaat": None}
 
     def run():
@@ -170,7 +175,9 @@ def api_vullen():
                 playlist_id=wl["playlist_id"],
                 categorieen=wl["categorieen"],
                 history_file=get_history_file(lijst_id),
+                queue_file=get_queue_file(lijst_id),
                 max_per_artiest=wl.get("max_per_artiest", 0),
+                aantal_blokken=aantal_blokken,
                 on_progress=on_progress,
             )
             _tasks[task_id]["status"] = "klaar"
@@ -196,6 +203,8 @@ def api_vullen_status(task_id):
     return jsonify(task)
 
 
+# --- Historie ---
+
 @app.route("/api/wissellijsten/<lijst_id>/historie")
 def api_historie(lijst_id):
     """Haal de historie op van een wissellijst."""
@@ -214,6 +223,226 @@ def api_historie(lijst_id):
                     entries.append(parsed)
 
     return jsonify(entries)
+
+
+@app.route("/api/wissellijsten/<lijst_id>/historie/<int:entry_index>", methods=["DELETE"])
+def api_historie_verwijderen(lijst_id, entry_index):
+    """Verwijder een historie-entry op basis van index."""
+    wl = get_wissellijst(lijst_id)
+    if not wl:
+        return jsonify({"error": "Wissellijst niet gevonden"}), 404
+
+    history_file = get_history_file(lijst_id)
+    if not os.path.exists(history_file):
+        return jsonify({"error": "Geen historie gevonden"}), 404
+
+    # Lees alle regels
+    with open(history_file, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    # Parse en filter: vind de N-de geldige entry
+    valid_index = 0
+    new_lines = []
+    removed = False
+    for line in lines:
+        parsed = _parse_history_line(line)
+        if parsed:
+            if valid_index == entry_index:
+                removed = True  # Skip deze regel
+            else:
+                new_lines.append(line)
+            valid_index += 1
+        else:
+            new_lines.append(line)
+
+    if not removed:
+        return jsonify({"error": "Index niet gevonden"}), 404
+
+    with open(history_file, "w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+
+    return jsonify({"ok": True})
+
+
+# --- Wachtrij ---
+
+def _read_queue(lijst_id):
+    """Lees wachtrij-bestand en return lijst van dicts."""
+    queue_file = get_queue_file(lijst_id)
+    entries = []
+    if os.path.exists(queue_file):
+        with open(queue_file, "r", encoding="utf-8") as f:
+            for line in f:
+                parsed = _parse_history_line(line)
+                if parsed:
+                    entries.append(parsed)
+    return entries
+
+
+def _write_queue(lijst_id, entries):
+    """Schrijf wachtrij-entries naar bestand."""
+    queue_file = get_queue_file(lijst_id)
+    with open(queue_file, "w", encoding="utf-8") as f:
+        for t in entries:
+            f.write(f"{t['categorie']} - {t['artiest']} - {t['titel']} - {t['uri']}\n")
+
+
+@app.route("/api/wissellijsten/<lijst_id>/wachtrij")
+def api_wachtrij(lijst_id):
+    """Haal de wachtrij op van een wissellijst."""
+    wl = get_wissellijst(lijst_id)
+    if not wl:
+        return jsonify({"error": "Wissellijst niet gevonden"}), 404
+    return jsonify(_read_queue(lijst_id))
+
+
+@app.route("/api/wissellijsten/<lijst_id>/wachtrij/vervang", methods=["POST"])
+def api_wachtrij_vervang(lijst_id):
+    """Vervang een track in de wachtrij."""
+    wl = get_wissellijst(lijst_id)
+    if not wl:
+        return jsonify({"error": "Wissellijst niet gevonden"}), 404
+
+    body = request.json
+    entry_index = body.get("index")
+    artiest = body.get("artiest", "").strip()
+    titel = body.get("titel", "").strip()
+
+    if not artiest or not titel:
+        return jsonify({"error": "Artiest en titel zijn verplicht"}), 400
+
+    entries = _read_queue(lijst_id)
+    if entry_index is None or entry_index < 0 or entry_index >= len(entries):
+        return jsonify({"error": "Ongeldige index"}), 400
+
+    # Zoek op Spotify
+    try:
+        sp = get_spotify_client()
+        uri = search_spotify(sp, artiest, titel)
+        if not uri:
+            return jsonify({"error": f"Track '{artiest} - {titel}' niet gevonden op Spotify"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    # Behoud de categorie, update de rest
+    entries[entry_index] = {
+        "categorie": entries[entry_index]["categorie"],
+        "artiest": artiest,
+        "titel": titel,
+        "uri": uri,
+    }
+
+    _write_queue(lijst_id, entries)
+    return jsonify(entries)
+
+
+# --- Rotatie ---
+
+@app.route("/api/wissellijsten/<lijst_id>/roteren", methods=["POST"])
+def api_roteren(lijst_id):
+    """Start een rotatie voor een wissellijst (async)."""
+    wl = get_wissellijst(lijst_id)
+    if not wl:
+        return jsonify({"error": "Wissellijst niet gevonden"}), 404
+
+    task_id = str(uuid.uuid4())[:8]
+    _tasks[task_id] = {"status": "bezig", "voortgang": 0, "tekst": "Roteren...", "resultaat": None}
+
+    def run():
+        try:
+            _tasks[task_id]["voortgang"] = 30
+            _tasks[task_id]["tekst"] = "Oudste blok verwijderen en wachtrij toevoegen..."
+
+            result = rotate_and_regenerate(wl)
+
+            _tasks[task_id]["voortgang"] = 100
+            _tasks[task_id]["status"] = "klaar"
+            _tasks[task_id]["tekst"] = result["tekst"]
+            _tasks[task_id]["resultaat"] = result
+
+            # Update laatste rotatie in config
+            data = load_wissellijsten()
+            for i, w in enumerate(data["wissellijsten"]):
+                if w["id"] == lijst_id:
+                    data["wissellijsten"][i]["laatste_rotatie"] = datetime.datetime.now().isoformat()
+                    break
+            save_wissellijsten(data)
+
+        except Exception as e:
+            _tasks[task_id]["status"] = "fout"
+            _tasks[task_id]["tekst"] = str(e)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+
+    return jsonify({"task_id": task_id})
+
+
+# --- Rotatie Scheduler ---
+
+def _check_schedules():
+    """Background thread die elke 60 seconden controleert of er geroteerd moet worden."""
+    while True:
+        time.sleep(60)
+        try:
+            now = datetime.datetime.now()
+            data = load_wissellijsten()
+
+            for wl in data["wissellijsten"]:
+                schema = wl.get("rotatie_schema", "uit")
+                if schema == "uit":
+                    continue
+
+                tijdstip = wl.get("rotatie_tijdstip", "08:00")
+                try:
+                    uur, minuut = map(int, tijdstip.split(":"))
+                except ValueError:
+                    continue
+
+                # Alleen uitvoeren op het juiste tijdstip (binnen de minuut)
+                if now.hour != uur or now.minute != minuut:
+                    continue
+
+                # Niet dubbel roteren op dezelfde dag
+                laatste = wl.get("laatste_rotatie", "")
+                if laatste:
+                    try:
+                        laatste_dt = datetime.datetime.fromisoformat(laatste)
+                        if laatste_dt.date() == now.date():
+                            continue
+                    except ValueError:
+                        pass
+
+                # Bij wekelijks: check de dag
+                if schema == "wekelijks":
+                    dag = wl.get("rotatie_dag", 0)
+                    if now.weekday() != dag:
+                        continue
+
+                # Roteer!
+                print(f"[Scheduler] Rotatie starten voor: {wl['naam']}")
+                try:
+                    result = rotate_and_regenerate(wl)
+
+                    # Update laatste rotatie
+                    wl["laatste_rotatie"] = now.isoformat()
+                    for i, w in enumerate(data["wissellijsten"]):
+                        if w["id"] == wl["id"]:
+                            data["wissellijsten"][i] = wl
+                            break
+                    save_wissellijsten(data)
+
+                    print(f"[Scheduler] Rotatie klaar: {wl['naam']} - {result['tekst']}")
+                except Exception as e:
+                    print(f"[Scheduler] Rotatie fout voor {wl['naam']}: {e}")
+
+        except Exception as e:
+            print(f"[Scheduler] Fout: {e}")
+
+
+# Start scheduler als daemon thread
+_scheduler = threading.Thread(target=_check_schedules, daemon=True)
+_scheduler.start()
 
 
 if __name__ == "__main__":

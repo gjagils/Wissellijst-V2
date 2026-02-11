@@ -86,10 +86,10 @@
         .status-tekst { color: #b3b3b3; font-size: 0.85em; margin-bottom: 8px; }
         .hidden { display: none; }
 
-        .historie-lijst {
+        .historie-lijst, .wachtrij-lijst {
             max-height: 400px; overflow-y: auto; margin-top: 12px;
         }
-        .historie-item {
+        .historie-item, .wachtrij-item {
             display: flex; justify-content: space-between; align-items: center;
             padding: 8px 12px; background: #2a2a2a; border-radius: 4px;
             margin-bottom: 4px; font-size: 0.85em;
@@ -98,6 +98,14 @@
         .historie-item-titel { color: #e0e0e0; }
         .historie-item-cat { color: #888; font-size: 0.8em; }
         .historie-count { color: #888; font-size: 0.85em; margin-top: 8px; }
+
+        .item-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+        .btn-icon {
+            background: none; border: none; color: #888; cursor: pointer;
+            font-size: 1em; padding: 4px 6px; border-radius: 4px;
+        }
+        .btn-icon:hover { background: #333; color: #e0e0e0; }
+        .btn-icon-danger:hover { color: #e74c3c; }
 
         #melding {
             padding: 12px; border-radius: 6px; margin-bottom: 16px;
@@ -158,6 +166,11 @@
             width: 90%; max-width: 400px;
         }
         .modal-content h2 { margin-bottom: 16px; }
+
+        .schedule-info {
+            color: #888; font-size: 0.8em; padding: 6px 10px;
+            background: #2a2a2a; border-radius: 4px; margin-top: 4px;
+        }
     </style>
 </head>
 <body>
@@ -202,6 +215,7 @@
         <!-- Tabs -->
         <div class="tab-bar">
             <button class="tab-btn active" onclick="toonTab('acties')" id="tab-acties">Acties</button>
+            <button class="tab-btn" onclick="toonTab('wachtrij')" id="tab-wachtrij">Wachtrij</button>
             <button class="tab-btn" onclick="toonTab('historie')" id="tab-historie">Historie</button>
         </div>
 
@@ -209,12 +223,21 @@
         <div id="tab-content-acties" class="card">
             <h2>Acties</h2>
             <div class="btn-row" style="margin-bottom:12px;">
-                <button class="btn btn-primary" id="btn-vullen" onclick="initieelVullen()">Initieel vullen (10 blokken)</button>
+                <button class="btn btn-primary" id="btn-vullen" onclick="initieelVullen()">Initieel vullen</button>
+                <button class="btn btn-secondary" id="btn-roteren" onclick="roteren()">Roteren</button>
             </div>
             <div id="voortgang-container" class="hidden">
                 <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
                 <p class="status-tekst" id="voortgang-tekst">Starten...</p>
             </div>
+            <div id="schedule-status"></div>
+        </div>
+
+        <!-- Tab: Wachtrij -->
+        <div id="tab-content-wachtrij" class="card hidden">
+            <h2>Volgend blokje</h2>
+            <p class="status-tekst" id="wachtrij-status"></p>
+            <div class="wachtrij-lijst" id="wachtrij-lijst"></div>
         </div>
 
         <!-- Tab: Historie -->
@@ -247,8 +270,36 @@
                 <button class="btn btn-secondary" onclick="categorieVerwijderen()" style="font-size:0.85em; padding:6px 14px;">- Categorie</button>
             </div>
 
+            <label for="aantal-blokken" style="margin-top:12px;">Aantal blokken</label>
+            <input type="number" id="aantal-blokken" min="1" max="50" value="10" placeholder="10">
+
             <label for="max-per-artiest" style="margin-top:12px;">Max liedjes per artiest (0 = onbeperkt)</label>
             <input type="number" id="max-per-artiest" min="0" max="99" value="0" placeholder="0 = onbeperkt">
+
+            <label style="margin-top:12px;">Automatische rotatie</label>
+            <select id="rotatie-schema" onchange="onRotatieSchemaChange()">
+                <option value="uit">Uit</option>
+                <option value="dagelijks">Dagelijks</option>
+                <option value="wekelijks">Wekelijks</option>
+            </select>
+
+            <div id="rotatie-opties" class="hidden">
+                <label for="rotatie-tijdstip">Tijdstip</label>
+                <input type="time" id="rotatie-tijdstip" value="08:00">
+
+                <div id="rotatie-dag-container" class="hidden">
+                    <label for="rotatie-dag">Dag</label>
+                    <select id="rotatie-dag">
+                        <option value="0">Maandag</option>
+                        <option value="1">Dinsdag</option>
+                        <option value="2">Woensdag</option>
+                        <option value="3">Donderdag</option>
+                        <option value="4">Vrijdag</option>
+                        <option value="5">Zaterdag</option>
+                        <option value="6">Zondag</option>
+                    </select>
+                </div>
+            </div>
 
             <div class="btn-row" style="margin-top:16px;">
                 <button class="btn btn-primary" onclick="opslaan()">Opslaan</button>
@@ -270,12 +321,32 @@
         </div>
     </div>
 
+    <!-- ============ MODAL: Track vervangen ============ -->
+    <div id="vervang-modal" class="modal-overlay" onclick="sluitVervangModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h2>Track vervangen</h2>
+            <p style="color:#888; font-size:0.85em; margin-bottom:12px;">
+                Categorie: <span id="vervang-categorie" style="color:#1db954;"></span>
+            </p>
+            <label for="vervang-artiest">Artiest</label>
+            <input type="text" id="vervang-artiest" placeholder="Bijv. Queen">
+            <label for="vervang-titel">Titel</label>
+            <input type="text" id="vervang-titel" placeholder="Bijv. Bohemian Rhapsody">
+            <div class="btn-row">
+                <button class="btn btn-primary" id="btn-vervang" onclick="zoekEnVervang()">Zoeken & vervangen</button>
+                <button class="btn btn-secondary" onclick="sluitVervangModal()">Annuleren</button>
+            </div>
+            <p id="vervang-status" class="status-tekst hidden" style="margin-top:8px;"></p>
+        </div>
+    </div>
+
     <script>
         let playlists = [];
         let wissellijsten = [];
         let activeLijstId = null;
         let editLijstId = null;
         let previousView = 'overzicht';
+        let vervangIndex = null;
 
         // --- Init ---
         async function init() {
@@ -309,10 +380,12 @@
             document.getElementById('tab-' + tabNaam).classList.add('active');
 
             document.getElementById('tab-content-acties').classList.add('hidden');
+            document.getElementById('tab-content-wachtrij').classList.add('hidden');
             document.getElementById('tab-content-historie').classList.add('hidden');
             document.getElementById('tab-content-' + tabNaam).classList.remove('hidden');
 
             if (tabNaam === 'historie') laadHistorie();
+            if (tabNaam === 'wachtrij') laadWachtrij();
         }
 
         // --- API calls ---
@@ -373,6 +446,7 @@
                 const playlist = playlists.find(p => p.id === wl.playlist_id);
                 const playlistNaam = playlist ? playlist.naam : wl.playlist_id;
                 const playlistImage = playlist && playlist.image;
+                const blokken = wl.aantal_blokken || 10;
 
                 const imgHtml = playlistImage
                     ? `<img class="playlist-card-img" src="${playlistImage}" alt="">`
@@ -383,7 +457,7 @@
                         ${imgHtml}
                         <div class="playlist-card-info">
                             <div class="playlist-card-naam">${wl.naam}</div>
-                            <div class="playlist-card-meta">${playlistNaam} &middot; ${wl.categorieen.length} categorieën</div>
+                            <div class="playlist-card-meta">${playlistNaam} &middot; ${wl.categorieen.length} cat. &middot; ${blokken} blokken</div>
                         </div>
                     </div>
                 `;
@@ -398,6 +472,8 @@
             const playlist = playlists.find(p => p.id === wl.playlist_id);
             const playlistNaam = playlist ? playlist.naam : wl.playlist_id;
             const playlistImage = playlist && playlist.image;
+            const aantalBlokken = wl.aantal_blokken || 10;
+            const verwachteTracks = wl.categorieen.length * aantalBlokken;
 
             // Header image
             const imgContainer = document.getElementById('detail-img-container');
@@ -408,17 +484,46 @@
             // Info
             document.getElementById('detail-naam').textContent = wl.naam;
             document.getElementById('detail-playlist').textContent = playlistNaam;
-            const maxInfo = wl.max_per_artiest ? `Max ${wl.max_per_artiest} per artiest` : 'Geen artiest-limiet';
-            document.getElementById('detail-meta').textContent = maxInfo;
+            const maxInfo = wl.max_per_artiest ? `Max ${wl.max_per_artiest}/artiest` : 'Geen artiest-limiet';
+            const trackInfo = playlist ? `${playlist.tracks}/${verwachteTracks} tracks` : '';
+            document.getElementById('detail-meta').textContent = `${aantalBlokken} blokken \u00b7 ${maxInfo}${trackInfo ? ' \u00b7 ' + trackInfo : ''}`;
 
             // Categorie tags
             document.getElementById('detail-cats').innerHTML = wl.categorieen
                 .map(c => `<span class="detail-cat-tag">${c}</span>`)
                 .join('');
 
+            // Vullen knop
+            const btnVullen = document.getElementById('btn-vullen');
+            btnVullen.textContent = `Initieel vullen (${aantalBlokken} blokken)`;
+            if (playlist && playlist.tracks >= verwachteTracks) {
+                btnVullen.disabled = true;
+                btnVullen.textContent = `Playlist is vol (${verwachteTracks} tracks)`;
+            } else {
+                btnVullen.disabled = false;
+            }
+
             // Reset voortgang
             document.getElementById('voortgang-container').classList.add('hidden');
-            document.getElementById('btn-vullen').disabled = false;
+
+            // Schedule status
+            const scheduleDiv = document.getElementById('schedule-status');
+            const schema = wl.rotatie_schema || 'uit';
+            if (schema !== 'uit') {
+                const tijdstip = wl.rotatie_tijdstip || '08:00';
+                const dagen = ['maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag', 'zondag'];
+                let schemaText = `Automatische rotatie: ${schema} om ${tijdstip}`;
+                if (schema === 'wekelijks') {
+                    schemaText += ` (${dagen[wl.rotatie_dag || 0]})`;
+                }
+                if (wl.laatste_rotatie) {
+                    const dt = new Date(wl.laatste_rotatie);
+                    schemaText += ` \u00b7 Laatste: ${dt.toLocaleDateString('nl-NL')} ${dt.toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit'})}`;
+                }
+                scheduleDiv.innerHTML = `<div class="schedule-info">${schemaText}</div>`;
+            } else {
+                scheduleDiv.innerHTML = '';
+            }
         }
 
         // --- Editor ---
@@ -429,6 +534,11 @@
             document.getElementById('naam').value = '';
             document.getElementById('playlist-select').value = '';
             document.getElementById('max-per-artiest').value = '0';
+            document.getElementById('aantal-blokken').value = '10';
+            document.getElementById('rotatie-schema').value = 'uit';
+            document.getElementById('rotatie-tijdstip').value = '08:00';
+            document.getElementById('rotatie-dag').value = '0';
+            onRotatieSchemaChange();
             zetCategorieen(['80s', '90s', '00s', '10s', '20s']);
             toonView('editor');
         }
@@ -441,6 +551,11 @@
             document.getElementById('naam').value = wl.naam;
             document.getElementById('playlist-select').value = wl.playlist_id;
             document.getElementById('max-per-artiest').value = wl.max_per_artiest || 0;
+            document.getElementById('aantal-blokken').value = wl.aantal_blokken || 10;
+            document.getElementById('rotatie-schema').value = wl.rotatie_schema || 'uit';
+            document.getElementById('rotatie-tijdstip').value = wl.rotatie_tijdstip || '08:00';
+            document.getElementById('rotatie-dag').value = wl.rotatie_dag || 0;
+            onRotatieSchemaChange();
             zetCategorieen(wl.categorieen);
             toonView('editor');
         }
@@ -450,6 +565,23 @@
                 toonView('detail');
             } else {
                 toonView('overzicht');
+            }
+        }
+
+        function onRotatieSchemaChange() {
+            const schema = document.getElementById('rotatie-schema').value;
+            const opties = document.getElementById('rotatie-opties');
+            const dagContainer = document.getElementById('rotatie-dag-container');
+
+            if (schema === 'uit') {
+                opties.classList.add('hidden');
+            } else {
+                opties.classList.remove('hidden');
+                if (schema === 'wekelijks') {
+                    dagContainer.classList.remove('hidden');
+                } else {
+                    dagContainer.classList.add('hidden');
+                }
             }
         }
 
@@ -500,12 +632,20 @@
             if (categorieen.length < 2) return toonMelding('Vul minimaal 2 categorieën in.', 'fout');
 
             const maxPerArtiest = parseInt(document.getElementById('max-per-artiest').value) || 0;
+            const aantalBlokken = parseInt(document.getElementById('aantal-blokken').value) || 10;
+            const rotatieSchema = document.getElementById('rotatie-schema').value;
+            const rotatieTijdstip = document.getElementById('rotatie-tijdstip').value || '08:00';
+            const rotatieDag = parseInt(document.getElementById('rotatie-dag').value) || 0;
 
             const body = {
                 naam,
                 playlist_id: playlistId,
                 categorieen,
                 max_per_artiest: maxPerArtiest,
+                aantal_blokken: aantalBlokken,
+                rotatie_schema: rotatieSchema,
+                rotatie_tijdstip: rotatieTijdstip,
+                rotatie_dag: rotatieDag,
             };
             if (editLijstId) body.id = editLijstId;
 
@@ -591,26 +731,163 @@
                 });
                 const { task_id } = await res.json();
 
-                // Poll voortgang
-                const poll = setInterval(async () => {
-                    const statusRes = await fetch(`/api/vullen/${task_id}`);
-                    const status = await statusRes.json();
-
+                pollTask(task_id, (status) => {
                     document.getElementById('progress-fill').style.width = status.voortgang + '%';
                     document.getElementById('voortgang-tekst').textContent = status.tekst;
+                }, (status) => {
+                    toonMelding(status.tekst, 'ok');
+                    // Herlaad playlists om track count te updaten
+                    laadPlaylists().then(() => vulDetailPagina());
+                }, (status) => {
+                    toonMelding('Fout: ' + status.tekst, 'fout');
+                    btn.disabled = false;
+                });
+            } catch (e) {
+                toonMelding('Kon vullen niet starten: ' + e.message, 'fout');
+                btn.disabled = false;
+            }
+        }
+
+        // --- Rotatie ---
+        async function roteren() {
+            if (!activeLijstId) return;
+
+            const btn = document.getElementById('btn-roteren');
+            btn.disabled = true;
+
+            const voortgangDiv = document.getElementById('voortgang-container');
+            voortgangDiv.classList.remove('hidden');
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/roteren`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const { task_id } = await res.json();
+
+                pollTask(task_id, (status) => {
+                    document.getElementById('progress-fill').style.width = status.voortgang + '%';
+                    document.getElementById('voortgang-tekst').textContent = status.tekst;
+                }, (status) => {
+                    toonMelding(status.tekst, 'ok');
+                    btn.disabled = false;
+                    laadPlaylists().then(() => {
+                        laadWissellijsten().then(() => vulDetailPagina());
+                    });
+                }, (status) => {
+                    toonMelding('Fout: ' + status.tekst, 'fout');
+                    btn.disabled = false;
+                });
+            } catch (e) {
+                toonMelding('Kon rotatie niet starten: ' + e.message, 'fout');
+                btn.disabled = false;
+            }
+        }
+
+        // --- Polling helper ---
+        function pollTask(taskId, onProgress, onDone, onError) {
+            const poll = setInterval(async () => {
+                try {
+                    const statusRes = await fetch(`/api/vullen/${taskId}`);
+                    const status = await statusRes.json();
+
+                    onProgress(status);
 
                     if (status.status === 'klaar') {
                         clearInterval(poll);
-                        toonMelding(status.tekst, 'ok');
-                        btn.disabled = false;
+                        onDone(status);
                     } else if (status.status === 'fout') {
                         clearInterval(poll);
-                        toonMelding('Fout: ' + status.tekst, 'fout');
-                        btn.disabled = false;
+                        onError(status);
                     }
-                }, 2000);
+                } catch (e) {
+                    clearInterval(poll);
+                    onError({ tekst: e.message });
+                }
+            }, 2000);
+        }
+
+        // --- Wachtrij ---
+        async function laadWachtrij() {
+            if (!activeLijstId) return;
+
+            const lijst = document.getElementById('wachtrij-lijst');
+            const status = document.getElementById('wachtrij-status');
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/wachtrij`);
+                const entries = await res.json();
+
+                if (entries.length === 0) {
+                    status.textContent = 'Geen tracks in de wachtrij.';
+                    lijst.innerHTML = '';
+                } else {
+                    status.textContent = `${entries.length} tracks klaar voor de volgende rotatie`;
+                    lijst.innerHTML = entries.map((e, i) => `
+                        <div class="wachtrij-item">
+                            <div>
+                                <span class="historie-item-artiest">${e.artiest}</span>
+                                <span class="historie-item-titel"> \u2014 ${e.titel}</span>
+                            </div>
+                            <div class="item-actions">
+                                <span class="historie-item-cat">${e.categorie}</span>
+                                <button class="btn-icon" onclick="openVervangModal(${i}, '${e.categorie.replace(/'/g, "\\'")}', '${e.artiest.replace(/'/g, "\\'")}', '${e.titel.replace(/'/g, "\\'")}')" title="Vervangen">&#9998;</button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
             } catch (e) {
-                toonMelding('Kon vullen niet starten: ' + e.message, 'fout');
+                toonMelding('Kan wachtrij niet laden: ' + e.message, 'fout');
+            }
+        }
+
+        // --- Vervang modal ---
+        function openVervangModal(index, categorie, artiest, titel) {
+            vervangIndex = index;
+            document.getElementById('vervang-categorie').textContent = categorie;
+            document.getElementById('vervang-artiest').value = artiest;
+            document.getElementById('vervang-titel').value = titel;
+            document.getElementById('vervang-status').classList.add('hidden');
+            document.getElementById('btn-vervang').disabled = false;
+            document.getElementById('vervang-modal').classList.add('visible');
+        }
+
+        function sluitVervangModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('vervang-modal').classList.remove('visible');
+            vervangIndex = null;
+        }
+
+        async function zoekEnVervang() {
+            const artiest = document.getElementById('vervang-artiest').value.trim();
+            const titel = document.getElementById('vervang-titel').value.trim();
+
+            if (!artiest || !titel) return toonMelding('Vul artiest en titel in.', 'fout');
+
+            const btn = document.getElementById('btn-vervang');
+            const statusEl = document.getElementById('vervang-status');
+            btn.disabled = true;
+            statusEl.textContent = 'Zoeken op Spotify...';
+            statusEl.classList.remove('hidden');
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/wachtrij/vervang`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ index: vervangIndex, artiest, titel }),
+                });
+                const result = await res.json();
+
+                if (result.error) {
+                    statusEl.textContent = result.error;
+                    btn.disabled = false;
+                } else {
+                    document.getElementById('vervang-modal').classList.remove('visible');
+                    toonMelding('Track vervangen!', 'ok');
+                    laadWachtrij();
+                }
+            } catch (e) {
+                statusEl.textContent = 'Fout: ' + e.message;
                 btn.disabled = false;
             }
         }
@@ -631,18 +908,41 @@
                     lijst.innerHTML = '';
                 } else {
                     count.textContent = `${entries.length} nummers in historie`;
-                    lijst.innerHTML = entries.reverse().map(e => `
+                    // Toon in omgekeerde volgorde (nieuwste eerst), maar bewaar originele index
+                    const reversed = entries.map((e, i) => ({...e, origIndex: i})).reverse();
+                    lijst.innerHTML = reversed.map(e => `
                         <div class="historie-item">
                             <div>
                                 <span class="historie-item-artiest">${e.artiest}</span>
-                                <span class="historie-item-titel"> — ${e.titel}</span>
+                                <span class="historie-item-titel"> \u2014 ${e.titel}</span>
                             </div>
-                            <span class="historie-item-cat">${e.categorie}</span>
+                            <div class="item-actions">
+                                <span class="historie-item-cat">${e.categorie}</span>
+                                <button class="btn-icon btn-icon-danger" onclick="verwijderHistorie(${e.origIndex})" title="Verwijderen">&times;</button>
+                            </div>
                         </div>
                     `).join('');
                 }
             } catch (e) {
                 toonMelding('Kan historie niet laden: ' + e.message, 'fout');
+            }
+        }
+
+        async function verwijderHistorie(index) {
+            if (!confirm('Weet je zeker dat je dit item wilt verwijderen?')) return;
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/historie/${index}`, {
+                    method: 'DELETE',
+                });
+                const result = await res.json();
+                if (result.error) {
+                    toonMelding(result.error, 'fout');
+                } else {
+                    laadHistorie();
+                }
+            } catch (e) {
+                toonMelding('Verwijderen mislukt: ' + e.message, 'fout');
             }
         }
 

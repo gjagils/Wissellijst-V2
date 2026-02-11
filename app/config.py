@@ -49,3 +49,8 @@ def get_wissellijst(lijst_id):
 def get_history_file(lijst_id):
     """Geef het pad naar het historie-bestand voor een specifieke wissellijst."""
     return os.path.join(DATA_DIR, f"historie_{lijst_id}.txt")
+
+
+def get_queue_file(lijst_id):
+    """Geef het pad naar het wachtrij-bestand voor een specifieke wissellijst."""
+    return os.path.join(DATA_DIR, f"wachtrij_{lijst_id}.txt")

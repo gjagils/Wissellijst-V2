@@ -5,8 +5,9 @@ from config import (
     SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
     SPOTIFY_SCOPE, CACHE_PATH,
     QUEUE_FILE, HISTORY_FILE,
-    load_wissellijsten, get_history_file,
+    load_wissellijsten, get_history_file, get_queue_file,
 )
+from suggest import _parse_history_line
 import os
 
 
@@ -38,16 +39,26 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None):
 
     if not os.path.exists(queue_file) or os.stat(queue_file).st_size == 0:
         print("Wachtrij is leeg. Geen update nodig.")
-        return
+        return {"status": "leeg", "tekst": "Wachtrij is leeg."}
 
-    with open(queue_file, "r") as f:
-        new_tracks = [line.strip() for line in f if line.strip()]
+    # Lees wachtrij - ondersteunt zowel URI-only als volledig formaat
+    new_uris = []
+    with open(queue_file, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            parsed = _parse_history_line(line)
+            if parsed:
+                new_uris.append(parsed["uri"])
+            elif line.startswith("spotify:"):
+                new_uris.append(line)
 
-    if not new_tracks:
+    if not new_uris:
         print("Wachtrij is leeg.")
-        return
+        return {"status": "leeg", "tekst": "Wachtrij is leeg."}
 
-    block_size = len(new_tracks)
+    block_size = len(new_uris)
     sp = get_spotify_client()
 
     # Haal huidige playlist op en log de oudste naar historie
@@ -57,6 +68,8 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None):
     with open(history_file, "a", encoding="utf-8") as hf:
         for item in current_items[:block_size]:
             track = item["track"]
+            if not track:
+                continue
             decade = get_decade(track["album"]["release_date"])
             artist = track["artists"][0]["name"]
             name = track["name"]
@@ -67,12 +80,61 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None):
     # Verwijder oud, voeg nieuw toe
     if tracks_to_remove:
         sp.playlist_remove_all_occurrences_of_items(playlist_id, tracks_to_remove)
-        sp.playlist_add_items(playlist_id, new_tracks)
+        sp.playlist_add_items(playlist_id, new_uris)
         print("Playlist succesvol geroteerd.")
 
     # Wachtrij leegmaken
     with open(queue_file, "w") as f:
         f.write("")
+
+    return {
+        "status": "ok",
+        "tekst": f"{len(tracks_to_remove)} nummers geroteerd.",
+        "verwijderd": len(tracks_to_remove),
+        "toegevoegd": len(new_uris),
+    }
+
+
+def rotate_and_regenerate(wl):
+    """Roteer een wissellijst en genereer een nieuw wachtrij-blok.
+
+    Args:
+        wl: wissellijst dict met alle configuratie
+    Returns: dict met resultaten
+    """
+    from suggest import generate_block, get_spotify_client as get_sp
+
+    queue_file = get_queue_file(wl["id"])
+    history_file = get_history_file(wl["id"])
+
+    # Stap 1: Roteer
+    result = rotate_playlist(wl["playlist_id"], queue_file=queue_file,
+                             history_file=history_file)
+
+    if result["status"] == "leeg":
+        return result
+
+    # Stap 2: Genereer nieuw blokje voor de wachtrij
+    sp = get_sp()
+    max_retries = 3
+    block = None
+    for _ in range(max_retries):
+        block = generate_block(sp, wl["playlist_id"], wl["categorieen"],
+                               history_file=history_file,
+                               max_per_artiest=wl.get("max_per_artiest", 0))
+        if block:
+            break
+
+    if block:
+        with open(queue_file, "w", encoding="utf-8") as f:
+            for t in block:
+                f.write(f"{t['categorie']} - {t['artiest']} - {t['titel']} - {t['uri']}\n")
+        result["nieuw_blok"] = True
+    else:
+        result["nieuw_blok"] = False
+        result["tekst"] += " (Nieuw wachtrij-blok genereren mislukt)"
+
+    return result
 
 
 if __name__ == "__main__":
@@ -88,5 +150,7 @@ if __name__ == "__main__":
     else:
         for wl in data["wissellijsten"]:
             print(f"Roteer: {wl['naam']}...")
+            queue_file = get_queue_file(wl["id"])
             history_file = get_history_file(wl["id"])
-            rotate_playlist(wl["playlist_id"], history_file=history_file)
+            rotate_playlist(wl["playlist_id"], queue_file=queue_file,
+                            history_file=history_file)
