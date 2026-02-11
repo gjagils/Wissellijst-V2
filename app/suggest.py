@@ -30,6 +30,28 @@ def search_spotify(sp, artist, title):
     return tracks[0]["uri"] if tracks else None
 
 
+def _parse_history_line(line):
+    """Parse een historie-regel. URI is altijd het laatste deel, split van rechts."""
+    line = line.strip()
+    if not line:
+        return None
+    # URI is altijd het laatste deel (spotify:track:...)
+    parts = line.rsplit(" - ", 1)
+    if len(parts) < 2 or not parts[1].startswith("spotify:"):
+        return None
+    uri = parts[1].strip()
+    # Rest: categorie - artiest - titel (titel kan " - " bevatten)
+    left_parts = parts[0].split(" - ", 2)
+    if len(left_parts) < 3:
+        return None
+    return {
+        "categorie": left_parts[0].strip(),
+        "artiest": left_parts[1].strip(),
+        "titel": left_parts[2].strip(),
+        "uri": uri,
+    }
+
+
 def load_history(history_file=None):
     """Laad artiesten en URI's uit de historie.
 
@@ -43,12 +65,13 @@ def load_history(history_file=None):
     if os.path.exists(history_file):
         with open(history_file, "r", encoding="utf-8") as f:
             for line in f:
-                parts = line.split(" - ")
-                if len(parts) >= 4:
-                    artist = parts[1].strip()
-                    artists.append(artist)
-                    uris.append(parts[3].strip())
-                    artist_counts[artist] = artist_counts.get(artist, 0) + 1
+                parsed = _parse_history_line(line)
+                if not parsed:
+                    continue
+                artist = parsed["artiest"]
+                artists.append(artist)
+                uris.append(parsed["uri"])
+                artist_counts[artist] = artist_counts.get(artist, 0) + 1
     return artists, uris, artist_counts
 
 

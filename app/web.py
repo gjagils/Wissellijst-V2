@@ -7,10 +7,10 @@ from spotipy.oauth2 import SpotifyOAuth
 
 from config import (
     load_wissellijsten, save_wissellijsten, get_wissellijst,
-    get_history_file, DATA_DIR, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET,
-    SPOTIFY_REDIRECT_URI, SPOTIFY_SCOPE, CACHE_PATH,
+    get_history_file, DATA_DIR, HISTORY_FILE, SPOTIFY_CLIENT_ID,
+    SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI, SPOTIFY_SCOPE, CACHE_PATH,
 )
-from suggest import get_spotify_client, initial_fill, load_history
+from suggest import get_spotify_client, initial_fill, _parse_history_line
 
 app = Flask(__name__)
 
@@ -177,21 +177,18 @@ def api_historie(lijst_id):
         return jsonify({"error": "Wissellijst niet gevonden"}), 404
 
     history_file = get_history_file(lijst_id)
+
+    # Fallback: als per-wissellijst bestand niet bestaat, gebruik globale historie
+    if not os.path.exists(history_file) and os.path.exists(HISTORY_FILE):
+        history_file = HISTORY_FILE
+
     entries = []
     if os.path.exists(history_file):
         with open(history_file, "r", encoding="utf-8") as f:
             for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                parts = line.split(" - ")
-                if len(parts) >= 4:
-                    entries.append({
-                        "categorie": parts[0].strip(),
-                        "artiest": parts[1].strip(),
-                        "titel": parts[2].strip(),
-                        "uri": parts[3].strip(),
-                    })
+                parsed = _parse_history_line(line)
+                if parsed:
+                    entries.append(parsed)
 
     return jsonify(entries)
 
