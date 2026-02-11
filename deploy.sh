@@ -21,11 +21,21 @@ info()  { echo -e "${GREEN}[OK]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[!!]${NC} $1"; }
 error() { echo -e "${RED}[FOUT]${NC} $1"; }
 
+ENV_FILE="$PROJECT_DIR/.env"
+
 case "${1:-help}" in
 
   update)
     echo "=== Wissellijst V2 updaten ==="
     cd "$PROJECT_DIR"
+
+    # Check of .env bestaat
+    if [ ! -f "$ENV_FILE" ]; then
+      error ".env bestand ontbreekt!"
+      echo ""
+      echo "Maak het aan met: ./deploy.sh setup"
+      exit 1
+    fi
 
     echo "1/4 Code ophalen..."
     git pull origin main
@@ -40,7 +50,7 @@ case "${1:-help}" in
     docker rm "$CONTAINER" 2>/dev/null || true
     docker run -d \
       --name "$CONTAINER" \
-      --env-file .env \
+      --env-file "$ENV_FILE" \
       -v /volume1/docker/wissellijst-v2/data:/app/data \
       -p 9090:5000 \
       --restart unless-stopped \
@@ -85,12 +95,36 @@ case "${1:-help}" in
     info "Backup: $BACKUP_FILE"
     ;;
 
+  setup)
+    echo "=== .env bestand aanmaken ==="
+    if [ -f "$ENV_FILE" ]; then
+      warn ".env bestaat al. Bewerk met: nano $ENV_FILE"
+      exit 0
+    fi
+    cat > "$ENV_FILE" << 'ENVEOF'
+# Spotify API (https://developer.spotify.com/dashboard)
+SPOTIFY_CLIENT_ID=
+SPOTIFY_CLIENT_SECRET=
+SPOTIFY_REDIRECT_URI=http://JOUW-SYNOLOGY-IP:9090/callback
+
+# OpenAI API (https://platform.openai.com/api-keys)
+OPENAI_API_KEY=
+ENVEOF
+    info ".env aangemaakt: $ENV_FILE"
+    echo ""
+    echo "Vul nu je API keys in:"
+    echo "  nano $ENV_FILE"
+    echo ""
+    echo "Daarna kun je deployen met: ./deploy.sh update"
+    ;;
+
   help|*)
     echo "Wissellijst V2 - Deploy script"
     echo ""
     echo "Gebruik: ./deploy.sh <commando>"
     echo ""
     echo "Commando's:"
+    echo "  setup     .env bestand aanmaken (eenmalig)"
     echo "  update    Git pull, image bouwen, container herstarten"
     echo "  restart   Alleen container herstarten"
     echo "  logs      Live logs bekijken"
