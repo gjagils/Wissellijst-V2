@@ -5,6 +5,7 @@ from config import (
     SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
     SPOTIFY_SCOPE, CACHE_PATH,
     QUEUE_FILE, HISTORY_FILE,
+    load_wissellijsten, get_history_file,
 )
 import os
 
@@ -75,8 +76,17 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None):
 
 
 if __name__ == "__main__":
-    playlist_id = os.environ.get("SPOTIFY_PLAYLIST_ID", "")
-    if not playlist_id:
-        print("SPOTIFY_PLAYLIST_ID niet ingesteld.")
-        exit(1)
-    rotate_playlist(playlist_id)
+    # Roteer alle wissellijsten
+    data = load_wissellijsten()
+    if not data["wissellijsten"]:
+        # Fallback naar oude env-var manier
+        playlist_id = os.environ.get("SPOTIFY_PLAYLIST_ID", "")
+        if not playlist_id:
+            print("Geen wissellijsten gevonden en SPOTIFY_PLAYLIST_ID niet ingesteld.")
+            exit(1)
+        rotate_playlist(playlist_id)
+    else:
+        for wl in data["wissellijsten"]:
+            print(f"Roteer: {wl['naam']}...")
+            history_file = get_history_file(wl["id"])
+            rotate_playlist(wl["playlist_id"], history_file=history_file)

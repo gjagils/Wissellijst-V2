@@ -31,18 +31,25 @@ def search_spotify(sp, artist, title):
 
 
 def load_history(history_file=None):
-    """Laad artiesten en URI's uit de historie."""
+    """Laad artiesten en URI's uit de historie.
+
+    Returns: (artists, uris, artist_counts) waar artist_counts een dict is
+             met per artiest het aantal keer dat die voorkomt.
+    """
     history_file = history_file or HISTORY_FILE
     artists = []
     uris = []
+    artist_counts = {}
     if os.path.exists(history_file):
         with open(history_file, "r", encoding="utf-8") as f:
             for line in f:
                 parts = line.split(" - ")
                 if len(parts) >= 4:
-                    artists.append(parts[1].strip())
+                    artist = parts[1].strip()
+                    artists.append(artist)
                     uris.append(parts[3].strip())
-    return artists, uris
+                    artist_counts[artist] = artist_counts.get(artist, 0) + 1
+    return artists, uris, artist_counts
 
 
 def ask_gpt_for_suggestions(categorieen, exclude_artists):
@@ -69,8 +76,11 @@ def ask_gpt_for_suggestions(categorieen, exclude_artists):
     return response.choices[0].message.content.strip().split("\n")
 
 
-def generate_block(sp, playlist_id, categorieen, history_file=None):
+def generate_block(sp, playlist_id, categorieen, history_file=None, max_per_artiest=0):
     """Genereer één blok suggesties (1 per categorie), gevalideerd op Spotify.
+
+    Args:
+        max_per_artiest: max nummers per artiest (0 = onbeperkt)
 
     Returns: lijst van dicts met {categorie, artiest, titel, uri} of None bij fout.
     """
@@ -79,8 +89,19 @@ def generate_block(sp, playlist_id, categorieen, history_file=None):
     # Verzamel artiesten om te vermijden
     current_tracks = sp.playlist_items(playlist_id)["items"]
     active_artists = [t["track"]["artists"][0]["name"] for t in current_tracks if t.get("track")]
-    history_artists, history_uris = load_history(history_file)
-    exclude = list(set(active_artists[:25] + history_artists[-25:]))
+    history_artists, history_uris, artist_counts = load_history(history_file)
+
+    # Tel ook artiesten in huidige playlist mee
+    for a in active_artists:
+        artist_counts[a] = artist_counts.get(a, 0) + 1
+
+    # Artiesten die het max bereikt hebben uitsluiten
+    if max_per_artiest > 0:
+        blocked_artists = [a for a, c in artist_counts.items() if c >= max_per_artiest]
+    else:
+        blocked_artists = []
+
+    exclude = list(set(active_artists[:25] + history_artists[-25:] + blocked_artists))
 
     raw_suggestions = ask_gpt_for_suggestions(categorieen, exclude)
 
@@ -96,6 +117,10 @@ def generate_block(sp, playlist_id, categorieen, history_file=None):
         artist = parts[1].strip()
         title = parts[2].strip()
 
+        # Check max per artiest
+        if max_per_artiest > 0 and artist_counts.get(artist, 0) >= max_per_artiest:
+            continue
+
         uri = search_spotify(sp, artist, title)
         if uri and uri not in history_uris:
             results.append({
@@ -104,17 +129,21 @@ def generate_block(sp, playlist_id, categorieen, history_file=None):
                 "titel": title,
                 "uri": uri,
             })
+            # Update count voor dit blok
+            artist_counts[artist] = artist_counts.get(artist, 0) + 1
 
     return results if len(results) == len(categorieen) else None
 
 
-def initial_fill(playlist_id, categorieen, history_file=None, on_progress=None):
+def initial_fill(playlist_id, categorieen, history_file=None, max_per_artiest=0,
+                  on_progress=None):
     """Vul een playlist met 10 blokken + 1 volgend blokje.
 
     Args:
         playlist_id: Spotify playlist ID
         categorieen: lijst van categorieën (bijv. ["80s", "90s", "vrouwen met jazzy voice"])
         history_file: pad naar historie bestand (optioneel)
+        max_per_artiest: max nummers per artiest (0 = onbeperkt)
         on_progress: callback(blok_nr, totaal, status_tekst) voor voortgang
 
     Returns: dict met resultaten
@@ -134,7 +163,8 @@ def initial_fill(playlist_id, categorieen, history_file=None, on_progress=None):
 
         block = None
         for poging in range(max_retries):
-            block = generate_block(sp, playlist_id, categorieen, history_file)
+            block = generate_block(sp, playlist_id, categorieen, history_file,
+                                   max_per_artiest=max_per_artiest)
             if block:
                 break
 
@@ -159,6 +189,11 @@ def initial_fill(playlist_id, categorieen, history_file=None, on_progress=None):
             uris = [t["uri"] for t in block]
             sp.playlist_add_items(playlist_id, uris)
             alle_tracks.extend(block)
+
+            # Schrijf naar historie
+            with open(history_file, "a", encoding="utf-8") as hf:
+                for t in block:
+                    hf.write(f"{t['categorie']} - {t['artiest']} - {t['titel']} - {t['uri']}\n")
 
     return {
         "toegevoegd": len(alle_tracks),
