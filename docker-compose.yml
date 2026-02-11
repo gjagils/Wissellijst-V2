@@ -1,0 +1,19 @@
+services:
+  wissellijst:
+    build: .
+    container_name: wissellijst-v2
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    restart: "no"
+
+  suggest:
+    build: .
+    container_name: wissellijst-suggest
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    command: python suggest.py
+    restart: "no"
