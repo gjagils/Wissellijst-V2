@@ -74,10 +74,37 @@ def api_playlists():
             offset += 50
 
         playlists = [
-            {"id": p["id"], "naam": p["name"], "tracks": p["tracks"]["total"]}
+            {
+                "id": p["id"],
+                "naam": p["name"],
+                "tracks": p["tracks"]["total"],
+                "image": p["images"][0]["url"] if p.get("images") else None,
+            }
             for p in results
         ]
         return jsonify(playlists)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/playlists", methods=["POST"])
+def api_playlist_aanmaken():
+    """Maak een nieuwe Spotify playlist aan."""
+    try:
+        body = request.json
+        naam = body.get("naam", "").strip()
+        if not naam:
+            return jsonify({"error": "Naam is verplicht"}), 400
+
+        sp = get_spotify_client()
+        user_id = sp.current_user()["id"]
+        playlist = sp.user_playlist_create(user_id, naam, public=False)
+        return jsonify({
+            "id": playlist["id"],
+            "naam": playlist["name"],
+            "tracks": 0,
+            "image": playlist["images"][0]["url"] if playlist.get("images") else None,
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -177,10 +204,6 @@ def api_historie(lijst_id):
         return jsonify({"error": "Wissellijst niet gevonden"}), 404
 
     history_file = get_history_file(lijst_id)
-
-    # Fallback: als per-wissellijst bestand niet bestaat, gebruik globale historie
-    if not os.path.exists(history_file) and os.path.exists(HISTORY_FILE):
-        history_file = HISTORY_FILE
 
     entries = []
     if os.path.exists(history_file):

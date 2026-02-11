@@ -39,17 +39,36 @@
         .btn-danger { background: #e74c3c; color: #fff; font-size: 0.8em; padding: 6px 12px; }
         .btn-danger:hover { background: #c0392b; }
 
-        .btn-row { display: flex; gap: 8px; margin-top: 4px; }
+        .btn-row { display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
 
-        .lijst-item {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 10px 14px; background: #2a2a2a; border-radius: 6px;
-            margin-bottom: 6px; cursor: pointer;
+        .btn-back {
+            background: none; border: none; color: #1db954; cursor: pointer;
+            font-size: 0.95em; padding: 0; margin-bottom: 16px; font-weight: 600;
+            display: flex; align-items: center; gap: 6px;
         }
-        .lijst-item:hover { background: #333; }
-        .lijst-item.active { border-left: 3px solid #1db954; }
-        .lijst-item-naam { font-weight: 500; }
-        .lijst-item-meta { color: #888; font-size: 0.8em; }
+        .btn-back:hover { color: #1ed760; }
+
+        /* Overview playlist cards */
+        .playlist-card {
+            display: flex; align-items: center; gap: 14px;
+            padding: 12px 14px; background: #2a2a2a; border-radius: 8px;
+            margin-bottom: 8px; cursor: pointer; transition: background 0.15s;
+        }
+        .playlist-card:hover { background: #333; }
+        .playlist-card-img {
+            width: 56px; height: 56px; border-radius: 6px;
+            object-fit: cover; background: #333; flex-shrink: 0;
+        }
+        .playlist-card-img-placeholder {
+            width: 56px; height: 56px; border-radius: 6px;
+            background: #333; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            color: #666; font-size: 1.4em;
+        }
+        .playlist-card-info { flex: 1; min-width: 0; }
+        .playlist-card-naam { font-weight: 600; font-size: 1em; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .playlist-card-meta { color: #888; font-size: 0.8em; }
+        .playlist-card-actions { flex-shrink: 0; display: flex; gap: 6px; }
 
         .categorie-row { display: flex; align-items: center; gap: 8px; }
         .categorie-row input { margin-bottom: 0; flex: 1; }
@@ -86,6 +105,58 @@
         }
         .melding-ok { background: #1a3a2a; color: #1db954; }
         .melding-fout { background: #3a1a1a; color: #e74c3c; }
+
+        /* Detail header */
+        .detail-header {
+            display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+        }
+        .detail-header-img {
+            width: 80px; height: 80px; border-radius: 8px;
+            object-fit: cover; background: #333; flex-shrink: 0;
+        }
+        .detail-header-img-placeholder {
+            width: 80px; height: 80px; border-radius: 8px;
+            background: #333; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            color: #555; font-size: 2em;
+        }
+        .detail-header-info { flex: 1; }
+        .detail-header-naam { font-size: 1.3em; font-weight: 700; color: #fff; margin-bottom: 4px; }
+        .detail-header-playlist { color: #1db954; font-size: 0.9em; margin-bottom: 2px; }
+        .detail-header-meta { color: #888; font-size: 0.85em; }
+
+        .detail-cats {
+            display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px;
+        }
+        .detail-cat-tag {
+            background: #1db954; color: #000; padding: 4px 10px;
+            border-radius: 12px; font-size: 0.8em; font-weight: 600;
+        }
+
+        /* Tabs for detail page */
+        .tab-bar {
+            display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #333;
+        }
+        .tab-btn {
+            background: none; border: none; color: #888; cursor: pointer;
+            padding: 10px 16px; font-size: 0.9em; font-weight: 600;
+            border-bottom: 2px solid transparent; margin-bottom: -2px;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .tab-btn:hover { color: #e0e0e0; }
+        .tab-btn.active { color: #1db954; border-bottom-color: #1db954; }
+
+        /* New playlist modal */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7); display: flex;
+            align-items: center; justify-content: center; z-index: 100;
+        }
+        .modal-content {
+            background: #1e1e1e; border-radius: 12px; padding: 24px;
+            width: 90%; max-width: 400px;
+        }
+        .modal-content h2 { margin-bottom: 16px; }
     </style>
 </head>
 <body>
@@ -93,64 +164,112 @@
 
     <div id="melding" class="hidden"></div>
 
-    <!-- Opgeslagen wissellijsten -->
-    <div class="card">
-        <h2>Mijn Wissellijsten</h2>
-        <div id="lijsten-container">
-            <p style="color:#888; font-size:0.9em;">Laden...</p>
-        </div>
-        <div class="btn-row" style="margin-top:12px;">
-            <button class="btn btn-secondary" onclick="nieuweLijst()">+ Nieuwe wissellijst</button>
-        </div>
-    </div>
-
-    <!-- Editor -->
-    <div id="editor" class="card hidden">
-        <h2 id="editor-titel">Nieuwe Wissellijst</h2>
-
-        <label for="naam">Naam</label>
-        <input type="text" id="naam" placeholder="Bijv. Muziek door de decennia">
-
-        <label for="playlist-select">Spotify Playlist</label>
-        <select id="playlist-select">
-            <option value="">Laden...</option>
-        </select>
-
-        <label>Categorieën (min. 2, max. 10)</label>
-        <div id="categorieen-container"></div>
-        <div class="btn-row" style="margin-top:8px;">
-            <button class="btn btn-secondary" onclick="categorieToevoegen()" style="font-size:0.85em; padding:6px 14px;">+ Categorie</button>
-            <button class="btn btn-secondary" onclick="categorieVerwijderen()" style="font-size:0.85em; padding:6px 14px;">- Categorie</button>
-        </div>
-
-        <label for="max-per-artiest" style="margin-top:12px;">Max liedjes per artiest (0 = onbeperkt)</label>
-        <input type="number" id="max-per-artiest" min="0" max="99" value="0" placeholder="0 = onbeperkt">
-
-        <div class="btn-row" style="margin-top:16px;">
-            <button class="btn btn-primary" onclick="opslaan()">Opslaan</button>
-            <button class="btn btn-secondary" onclick="annuleren()">Annuleren</button>
+    <!-- ============ VIEW: OVERZICHT ============ -->
+    <div id="view-overzicht">
+        <div class="card">
+            <h2>Mijn Wissellijsten</h2>
+            <div id="lijsten-container">
+                <p style="color:#888; font-size:0.9em;">Laden...</p>
+            </div>
+            <div class="btn-row" style="margin-top:12px;">
+                <button class="btn btn-secondary" onclick="nieuweLijst()">+ Nieuwe wissellijst</button>
+            </div>
         </div>
     </div>
 
-    <!-- Acties voor geselecteerde lijst -->
-    <div id="acties" class="card hidden">
-        <h2>Acties</h2>
-        <p class="status-tekst" id="actie-info"></p>
-        <div class="btn-row">
-            <button class="btn btn-primary" id="btn-vullen" onclick="initiëelVullen()">Initieel vullen (10 blokken)</button>
-            <button class="btn btn-secondary" id="btn-historie" onclick="toonHistorie()">Historie</button>
+    <!-- ============ VIEW: DETAIL ============ -->
+    <div id="view-detail" class="hidden">
+        <button class="btn-back" onclick="naarOverzicht()">&#8592; Terug naar overzicht</button>
+
+        <!-- Header met playlist info -->
+        <div class="card">
+            <div class="detail-header">
+                <div id="detail-img-container"></div>
+                <div class="detail-header-info">
+                    <div class="detail-header-naam" id="detail-naam"></div>
+                    <div class="detail-header-playlist" id="detail-playlist"></div>
+                    <div class="detail-header-meta" id="detail-meta"></div>
+                </div>
+            </div>
+            <div class="detail-cats" id="detail-cats"></div>
+            <div class="btn-row">
+                <button class="btn btn-secondary" style="font-size:0.85em;padding:6px 14px;" onclick="bewerkLijst(activeLijstId)">Bewerken</button>
+                <button class="btn btn-danger" onclick="verwijderLijst(activeLijstId)">Verwijderen</button>
+            </div>
         </div>
-        <div id="voortgang-container" class="hidden">
-            <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
-            <p class="status-tekst" id="voortgang-tekst">Starten...</p>
+
+        <!-- Tabs -->
+        <div class="tab-bar">
+            <button class="tab-btn active" onclick="toonTab('acties')" id="tab-acties">Acties</button>
+            <button class="tab-btn" onclick="toonTab('historie')" id="tab-historie">Historie</button>
+        </div>
+
+        <!-- Tab: Acties -->
+        <div id="tab-content-acties" class="card">
+            <h2>Acties</h2>
+            <div class="btn-row" style="margin-bottom:12px;">
+                <button class="btn btn-primary" id="btn-vullen" onclick="initieelVullen()">Initieel vullen (10 blokken)</button>
+            </div>
+            <div id="voortgang-container" class="hidden">
+                <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+                <p class="status-tekst" id="voortgang-tekst">Starten...</p>
+            </div>
+        </div>
+
+        <!-- Tab: Historie -->
+        <div id="tab-content-historie" class="card hidden">
+            <h2>Historie</h2>
+            <p class="historie-count" id="historie-count"></p>
+            <div class="historie-lijst" id="historie-lijst"></div>
         </div>
     </div>
 
-    <!-- Historie -->
-    <div id="historie" class="card hidden">
-        <h2>Historie</h2>
-        <p class="historie-count" id="historie-count"></p>
-        <div class="historie-lijst" id="historie-lijst"></div>
+    <!-- ============ VIEW: EDITOR ============ -->
+    <div id="view-editor" class="hidden">
+        <button class="btn-back" onclick="annuleren()">&#8592; Annuleren</button>
+
+        <div class="card">
+            <h2 id="editor-titel">Nieuwe Wissellijst</h2>
+
+            <label for="naam">Naam</label>
+            <input type="text" id="naam" placeholder="Bijv. Muziek door de decennia">
+
+            <label>Spotify Playlist</label>
+            <div style="display:flex; gap:8px; align-items:start;">
+                <select id="playlist-select" style="flex:1;">
+                    <option value="">Laden...</option>
+                </select>
+                <button class="btn btn-secondary" style="font-size:0.85em; padding:10px 14px; white-space:nowrap; margin-bottom:12px;" onclick="toonNieuwePlaylistModal()">+ Nieuw</button>
+            </div>
+
+            <label>Categorieën (min. 2, max. 10)</label>
+            <div id="categorieen-container"></div>
+            <div class="btn-row" style="margin-top:8px;">
+                <button class="btn btn-secondary" onclick="categorieToevoegen()" style="font-size:0.85em; padding:6px 14px;">+ Categorie</button>
+                <button class="btn btn-secondary" onclick="categorieVerwijderen()" style="font-size:0.85em; padding:6px 14px;">- Categorie</button>
+            </div>
+
+            <label for="max-per-artiest" style="margin-top:12px;">Max liedjes per artiest (0 = onbeperkt)</label>
+            <input type="number" id="max-per-artiest" min="0" max="99" value="0" placeholder="0 = onbeperkt">
+
+            <div class="btn-row" style="margin-top:16px;">
+                <button class="btn btn-primary" onclick="opslaan()">Opslaan</button>
+                <button class="btn btn-secondary" onclick="annuleren()">Annuleren</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ MODAL: Nieuwe Spotify Playlist ============ -->
+    <div id="nieuwe-playlist-modal" class="modal-overlay hidden" onclick="sluitNieuwePlaylistModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h2>Nieuwe Spotify Playlist</h2>
+            <label for="nieuwe-playlist-naam">Naam</label>
+            <input type="text" id="nieuwe-playlist-naam" placeholder="Bijv. Mijn wissellijst">
+            <div class="btn-row">
+                <button class="btn btn-primary" onclick="maakNieuwePlaylist()">Aanmaken</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('nieuwe-playlist-modal').classList.add('hidden')">Annuleren</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -158,10 +277,44 @@
         let wissellijsten = [];
         let activeLijstId = null;
         let editLijstId = null;
+        let previousView = 'overzicht';
 
         // --- Init ---
         async function init() {
             await Promise.all([laadPlaylists(), laadWissellijsten()]);
+        }
+
+        // --- Navigation ---
+        function toonView(viewNaam) {
+            document.getElementById('view-overzicht').classList.add('hidden');
+            document.getElementById('view-detail').classList.add('hidden');
+            document.getElementById('view-editor').classList.add('hidden');
+            document.getElementById('view-' + viewNaam).classList.remove('hidden');
+        }
+
+        function naarOverzicht() {
+            activeLijstId = null;
+            toonView('overzicht');
+        }
+
+        function naarDetail(id) {
+            activeLijstId = id;
+            previousView = 'overzicht';
+            toonView('detail');
+            vulDetailPagina();
+            toonTab('acties');
+        }
+
+        // --- Tabs ---
+        function toonTab(tabNaam) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('tab-' + tabNaam).classList.add('active');
+
+            document.getElementById('tab-content-acties').classList.add('hidden');
+            document.getElementById('tab-content-historie').classList.add('hidden');
+            document.getElementById('tab-content-' + tabNaam).classList.remove('hidden');
+
+            if (tabNaam === 'historie') laadHistorie();
         }
 
         // --- API calls ---
@@ -197,74 +350,96 @@
             });
         }
 
-        // --- Wissellijsten overzicht ---
+        // --- Overzicht: wissellijsten tonen ---
         function toonLijsten() {
             const container = document.getElementById('lijsten-container');
             if (wissellijsten.length === 0) {
                 container.innerHTML = '<p style="color:#888; font-size:0.9em;">Nog geen wissellijsten. Maak er een aan!</p>';
-                document.getElementById('acties').classList.add('hidden');
                 return;
             }
 
             container.innerHTML = wissellijsten.map(wl => {
                 const playlist = playlists.find(p => p.id === wl.playlist_id);
                 const playlistNaam = playlist ? playlist.naam : wl.playlist_id;
-                const isActive = wl.id === activeLijstId;
+                const playlistImage = playlist && playlist.image;
+
+                const imgHtml = playlistImage
+                    ? `<img class="playlist-card-img" src="${playlistImage}" alt="">`
+                    : `<div class="playlist-card-img-placeholder">&#9835;</div>`;
+
                 return `
-                    <div class="lijst-item ${isActive ? 'active' : ''}" onclick="selecteerLijst('${wl.id}')">
-                        <div>
-                            <div class="lijst-item-naam">${wl.naam}</div>
-                            <div class="lijst-item-meta">${playlistNaam} · ${wl.categorieen.length} categorieën</div>
-                        </div>
-                        <div class="btn-row">
-                            <button class="btn btn-secondary" style="font-size:0.8em;padding:4px 10px;" onclick="event.stopPropagation();bewerkLijst('${wl.id}')">Bewerk</button>
-                            <button class="btn btn-danger" onclick="event.stopPropagation();verwijderLijst('${wl.id}')">Verwijder</button>
+                    <div class="playlist-card" onclick="naarDetail('${wl.id}')">
+                        ${imgHtml}
+                        <div class="playlist-card-info">
+                            <div class="playlist-card-naam">${wl.naam}</div>
+                            <div class="playlist-card-meta">${playlistNaam} &middot; ${wl.categorieen.length} categorieën</div>
                         </div>
                     </div>
                 `;
             }).join('');
         }
 
-        function selecteerLijst(id) {
-            activeLijstId = id;
-            toonLijsten();
+        // --- Detail pagina vullen ---
+        function vulDetailPagina() {
+            const wl = wissellijsten.find(w => w.id === activeLijstId);
+            if (!wl) return naarOverzicht();
 
-            const wl = wissellijsten.find(w => w.id === id);
-            const actieDiv = document.getElementById('acties');
-            const infoEl = document.getElementById('actie-info');
-            actieDiv.classList.remove('hidden');
-            const maxInfo = wl.max_per_artiest ? ` · max ${wl.max_per_artiest}/artiest` : '';
-            infoEl.textContent = `${wl.naam} — ${wl.categorieen.join(', ')}${maxInfo}`;
+            const playlist = playlists.find(p => p.id === wl.playlist_id);
+            const playlistNaam = playlist ? playlist.naam : wl.playlist_id;
+            const playlistImage = playlist && playlist.image;
 
+            // Header image
+            const imgContainer = document.getElementById('detail-img-container');
+            imgContainer.innerHTML = playlistImage
+                ? `<img class="detail-header-img" src="${playlistImage}" alt="">`
+                : `<div class="detail-header-img-placeholder">&#9835;</div>`;
+
+            // Info
+            document.getElementById('detail-naam').textContent = wl.naam;
+            document.getElementById('detail-playlist').textContent = playlistNaam;
+            const maxInfo = wl.max_per_artiest ? `Max ${wl.max_per_artiest} per artiest` : 'Geen artiest-limiet';
+            document.getElementById('detail-meta').textContent = maxInfo;
+
+            // Categorie tags
+            document.getElementById('detail-cats').innerHTML = wl.categorieen
+                .map(c => `<span class="detail-cat-tag">${c}</span>`)
+                .join('');
+
+            // Reset voortgang
             document.getElementById('voortgang-container').classList.add('hidden');
             document.getElementById('btn-vullen').disabled = false;
-            document.getElementById('historie').classList.add('hidden');
         }
 
         // --- Editor ---
         function nieuweLijst() {
             editLijstId = null;
+            previousView = 'overzicht';
             document.getElementById('editor-titel').textContent = 'Nieuwe Wissellijst';
             document.getElementById('naam').value = '';
             document.getElementById('playlist-select').value = '';
             document.getElementById('max-per-artiest').value = '0';
             zetCategorieen(['80s', '90s', '00s', '10s', '20s']);
-            document.getElementById('editor').classList.remove('hidden');
+            toonView('editor');
         }
 
         function bewerkLijst(id) {
             const wl = wissellijsten.find(w => w.id === id);
             editLijstId = id;
+            previousView = activeLijstId ? 'detail' : 'overzicht';
             document.getElementById('editor-titel').textContent = 'Bewerk Wissellijst';
             document.getElementById('naam').value = wl.naam;
             document.getElementById('playlist-select').value = wl.playlist_id;
             document.getElementById('max-per-artiest').value = wl.max_per_artiest || 0;
             zetCategorieen(wl.categorieen);
-            document.getElementById('editor').classList.remove('hidden');
+            toonView('editor');
         }
 
         function annuleren() {
-            document.getElementById('editor').classList.add('hidden');
+            if (previousView === 'detail' && activeLijstId) {
+                toonView('detail');
+            } else {
+                toonView('overzicht');
+            }
         }
 
         function zetCategorieen(lijst) {
@@ -330,10 +505,10 @@
                     body: JSON.stringify(body),
                 });
                 const result = await res.json();
-                document.getElementById('editor').classList.add('hidden');
                 toonMelding('Wissellijst opgeslagen!', 'ok');
                 await laadWissellijsten();
-                selecteerLijst(result.id);
+                // Navigate to the detail page of the saved list
+                naarDetail(result.id);
             } catch (e) {
                 toonMelding('Opslaan mislukt: ' + e.message, 'fout');
             }
@@ -342,16 +517,53 @@
         async function verwijderLijst(id) {
             if (!confirm('Weet je het zeker?')) return;
             await fetch(`/api/wissellijsten/${id}`, { method: 'DELETE' });
-            if (activeLijstId === id) {
-                activeLijstId = null;
-                document.getElementById('acties').classList.add('hidden');
-            }
+            activeLijstId = null;
             await laadWissellijsten();
             toonMelding('Wissellijst verwijderd.', 'ok');
+            toonView('overzicht');
+        }
+
+        // --- Nieuwe Spotify Playlist ---
+        function toonNieuwePlaylistModal() {
+            document.getElementById('nieuwe-playlist-naam').value = '';
+            document.getElementById('nieuwe-playlist-modal').classList.remove('hidden');
+        }
+
+        function sluitNieuwePlaylistModal(event) {
+            if (event.target === event.currentTarget) {
+                document.getElementById('nieuwe-playlist-modal').classList.add('hidden');
+            }
+        }
+
+        async function maakNieuwePlaylist() {
+            const naam = document.getElementById('nieuwe-playlist-naam').value.trim();
+            if (!naam) return toonMelding('Vul een naam in voor de playlist.', 'fout');
+
+            try {
+                const res = await fetch('/api/playlists', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ naam }),
+                });
+                const result = await res.json();
+                if (result.error) throw new Error(result.error);
+
+                // Add to local list and refresh dropdown
+                playlists.unshift(result);
+                vulPlaylistSelect();
+
+                // Select the new playlist
+                document.getElementById('playlist-select').value = result.id;
+
+                document.getElementById('nieuwe-playlist-modal').classList.add('hidden');
+                toonMelding(`Playlist "${result.naam}" aangemaakt op Spotify!`, 'ok');
+            } catch (e) {
+                toonMelding('Playlist aanmaken mislukt: ' + e.message, 'fout');
+            }
         }
 
         // --- Initieel vullen ---
-        async function initiëelVullen() {
+        async function initieelVullen() {
             if (!activeLijstId) return;
 
             const btn = document.getElementById('btn-vullen');
@@ -393,10 +605,9 @@
         }
 
         // --- Historie ---
-        async function toonHistorie() {
+        async function laadHistorie() {
             if (!activeLijstId) return;
 
-            const historieDiv = document.getElementById('historie');
             const lijst = document.getElementById('historie-lijst');
             const count = document.getElementById('historie-count');
 
@@ -405,7 +616,7 @@
                 const entries = await res.json();
 
                 if (entries.length === 0) {
-                    count.textContent = 'Nog geen historie.';
+                    count.textContent = 'Nog geen historie voor deze wissellijst.';
                     lijst.innerHTML = '';
                 } else {
                     count.textContent = `${entries.length} nummers in historie`;
@@ -419,8 +630,6 @@
                         </div>
                     `).join('');
                 }
-
-                historieDiv.classList.remove('hidden');
             } catch (e) {
                 toonMelding('Kan historie niet laden: ' + e.message, 'fout');
             }
