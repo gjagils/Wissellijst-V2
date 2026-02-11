@@ -21,51 +21,46 @@ info()  { echo -e "${GREEN}[OK]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[!!]${NC} $1"; }
 error() { echo -e "${RED}[FOUT]${NC} $1"; }
 
-ENV_FILE="$PROJECT_DIR/.env"
-
 case "${1:-help}" in
 
   update)
     echo "=== Wissellijst V2 updaten ==="
     cd "$PROJECT_DIR"
 
-    # Check of .env bestaat
-    if [ ! -f "$ENV_FILE" ]; then
-      error ".env bestand ontbreekt!"
-      echo ""
-      echo "Maak het aan met: ./deploy.sh setup"
-      exit 1
-    fi
-
-    echo "1/4 Code ophalen..."
+    echo "1/3 Code ophalen..."
     git pull origin main
     info "Code bijgewerkt"
 
-    echo "2/4 Docker image bouwen..."
+    echo "2/3 Docker image bouwen..."
     docker build --no-cache -t "$IMAGE" .
     info "Image gebouwd"
 
-    echo "3/4 Container herstarten..."
+    echo "3/3 Opruimen..."
+    docker image prune -f
+    info "Image klaar! Herstart nu via Portainer of: ./deploy.sh restart"
+    ;;
+
+  restart)
+    echo "=== Container herstarten met nieuw image ==="
+    # Stop, verwijder, en herstart met dezelfde config via Portainer env vars
+    # Env vars ophalen uit de draaiende container
+    ENV_ARGS=""
+    if docker inspect "$CONTAINER" > /dev/null 2>&1; then
+      ENV_ARGS=$(docker inspect "$CONTAINER" --format '{{range .Config.Env}}-e {{.}} {{end}}')
+    else
+      error "Container '$CONTAINER' niet gevonden. Start via Portainer."
+      exit 1
+    fi
     docker stop "$CONTAINER" 2>/dev/null || true
     docker rm "$CONTAINER" 2>/dev/null || true
-    docker run -d \
+    eval docker run -d \
       --name "$CONTAINER" \
-      --env-file "$ENV_FILE" \
+      $ENV_ARGS \
       -v /volume1/docker/wissellijst-v2/data:/app/data \
       -p 9090:5000 \
       --restart unless-stopped \
       "$IMAGE"
-    info "Container draait"
-
-    echo "4/4 Opruimen..."
-    docker image prune -f
-    info "Klaar! App beschikbaar op poort 9090"
-    ;;
-
-  restart)
-    echo "=== Container herstarten ==="
-    docker restart "$CONTAINER"
-    info "Container herstart"
+    info "Container herstart met nieuw image"
     ;;
 
   logs)
@@ -95,42 +90,21 @@ case "${1:-help}" in
     info "Backup: $BACKUP_FILE"
     ;;
 
-  setup)
-    echo "=== .env bestand aanmaken ==="
-    if [ -f "$ENV_FILE" ]; then
-      warn ".env bestaat al. Bewerk met: nano $ENV_FILE"
-      exit 0
-    fi
-    cat > "$ENV_FILE" << 'ENVEOF'
-# Spotify API (https://developer.spotify.com/dashboard)
-SPOTIFY_CLIENT_ID=
-SPOTIFY_CLIENT_SECRET=
-SPOTIFY_REDIRECT_URI=http://JOUW-SYNOLOGY-IP:9090/callback
-
-# OpenAI API (https://platform.openai.com/api-keys)
-OPENAI_API_KEY=
-ENVEOF
-    info ".env aangemaakt: $ENV_FILE"
-    echo ""
-    echo "Vul nu je API keys in:"
-    echo "  nano $ENV_FILE"
-    echo ""
-    echo "Daarna kun je deployen met: ./deploy.sh update"
-    ;;
-
   help|*)
     echo "Wissellijst V2 - Deploy script"
     echo ""
     echo "Gebruik: ./deploy.sh <commando>"
     echo ""
     echo "Commando's:"
-    echo "  setup     .env bestand aanmaken (eenmalig)"
-    echo "  update    Git pull, image bouwen, container herstarten"
-    echo "  restart   Alleen container herstarten"
+    echo "  update    Git pull + image bouwen"
+    echo "  restart   Container herstarten met nieuw image (env vars uit Portainer)"
     echo "  logs      Live logs bekijken"
     echo "  status    Kijken of de container draait"
     echo "  shell     Shell openen in de container"
     echo "  backup    Data directory backuppen"
+    echo ""
+    echo "Typisch gebruik na code-wijziging:"
+    echo "  ./deploy.sh update && ./deploy.sh restart"
     echo ""
     ;;
 
