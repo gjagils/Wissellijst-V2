@@ -2,6 +2,7 @@
 """Discovery wissellijst: scan bronlijsten, bouw smaakprofiel, score met GPT."""
 import os
 import json
+from datetime import datetime, timedelta
 from openai import OpenAI
 from config import OPENAI_API_KEY
 
@@ -79,7 +80,7 @@ def scan_source_playlists(sp, playlist_ids):
             # Haal naam en tracks in 1 call via playlist_items (met naam uit eerste call)
             results = sp.playlist_items(
                 pid,
-                fields='items(track(uri,name,artists(name),album(name))),next',
+                fields='items(track(uri,name,artists(name),album(name,release_date))),next',
                 limit=100,
             )
             items = list(results['items'])
@@ -105,6 +106,9 @@ def scan_source_playlists(sp, playlist_ids):
                 titel = track['name']
                 album = track['album']['name'] if track.get('album') else ''
 
+                release_date = (track['album'].get('release_date', '')
+                                if track.get('album') else '')
+
                 if uri in tracks_map:
                     tracks_map[uri]['overlap'] += 1
                     tracks_map[uri]['bronnen'].append(playlist_name)
@@ -113,6 +117,7 @@ def scan_source_playlists(sp, playlist_ids):
                         'artiest': artiest,
                         'titel': titel,
                         'album': album,
+                        'release_date': release_date,
                         'uri': uri,
                         'overlap': 1,
                         'bronnen': [playlist_name],
@@ -123,6 +128,26 @@ def scan_source_playlists(sp, playlist_ids):
     print(f"  Totaal: {len(tracks_map)} unieke tracks uit "
           f"{len(playlist_ids)} bronlijsten", flush=True)
     return tracks_map
+
+
+def _is_recent_release(release_date, max_months=3):
+    """Check of een track binnen de laatste max_months maanden is uitgebracht."""
+    if not release_date:
+        return False
+    try:
+        # Spotify geeft 'YYYY-MM-DD', 'YYYY-MM', of 'YYYY'
+        parts = release_date.split('-')
+        if len(parts) >= 2:
+            release = datetime(int(parts[0]), int(parts[1]),
+                               int(parts[2]) if len(parts) >= 3 else 1)
+        else:
+            # Alleen jaar - neem 1 januari
+            release = datetime(int(parts[0]), 1, 1)
+
+        cutoff = datetime.now() - timedelta(days=max_months * 30)
+        return release >= cutoff
+    except (ValueError, IndexError):
+        return False
 
 
 def _load_history_uris(history_file):
@@ -368,6 +393,13 @@ def generate_discovery_block(sp, wl, history_file, block_size=10):
           f"(historie={len(history_uris)}, playlist={len(playlist_uris)}, "
           f"wachtrij={len(queue_uris)})", flush=True)
 
+    # Filter op recente releases (laatste 3 maanden)
+    pre_count = len(candidates)
+    candidates = [t for t in candidates
+                  if _is_recent_release(t.get('release_date', ''))]
+    print(f"[discovery] Stap 2b: {len(candidates)} kandidaten na release "
+          f"filter ({pre_count - len(candidates)} te oud)", flush=True)
+
     if not candidates:
         print("[discovery] Geen nieuwe tracks gevonden in bronlijsten",
               flush=True)
@@ -464,6 +496,13 @@ def initial_fill_discovery(playlist_id, wl, history_file, queue_file,
     candidates = [t for t in all_tracks.values() if t['uri'] not in used_uris]
     print(f"[discovery-fill] {len(candidates)} kandidaten na filter "
           f"({len(used_uris)} al gebruikt)", flush=True)
+
+    # Filter op recente releases (laatste 3 maanden)
+    pre_count = len(candidates)
+    candidates = [t for t in candidates
+                  if _is_recent_release(t.get('release_date', ''))]
+    print(f"[discovery-fill] {len(candidates)} kandidaten na release filter "
+          f"({pre_count - len(candidates)} te oud)", flush=True)
 
     if not candidates:
         return {
