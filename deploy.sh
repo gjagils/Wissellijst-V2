@@ -23,6 +23,46 @@ error() { echo -e "${RED}[FOUT]${NC} $1"; }
 
 case "${1:-help}" in
 
+  deploy)
+    echo "=== Wissellijst V2 - Volledige deploy ==="
+    cd "$PROJECT_DIR"
+
+    echo "1/4 Code ophalen..."
+    git pull origin main
+    info "Code bijgewerkt"
+
+    echo "2/4 Docker image bouwen..."
+    docker build --no-cache -t "$IMAGE" .
+    info "Image gebouwd"
+
+    echo "3/4 Opruimen..."
+    docker image prune -f
+    info "Oude images opgeruimd"
+
+    echo "4/4 Container herstarten..."
+    ENV_ARGS=""
+    if docker inspect "$CONTAINER" > /dev/null 2>&1; then
+      ENV_ARGS=$(docker inspect "$CONTAINER" --format '{{range .Config.Env}}-e {{.}} {{end}}')
+    else
+      error "Container '$CONTAINER' niet gevonden. Start eerst via Portainer."
+      exit 1
+    fi
+    docker stop "$CONTAINER" 2>/dev/null || true
+    docker rm "$CONTAINER" 2>/dev/null || true
+    eval docker run -d \
+      --name "$CONTAINER" \
+      $ENV_ARGS \
+      -v /volume1/docker/wissellijst-v2/data:/app/data \
+      -p 9090:5000 \
+      --restart unless-stopped \
+      "$IMAGE"
+    info "Container herstart met nieuw image"
+
+    echo ""
+    info "Deploy compleet! App draait op poort 9090"
+    docker ps --filter "name=$CONTAINER" --format "table {{.Status}}\t{{.Ports}}"
+    ;;
+
   update)
     echo "=== Wissellijst V2 updaten ==="
     cd "$PROJECT_DIR"
@@ -96,15 +136,16 @@ case "${1:-help}" in
     echo "Gebruik: ./deploy.sh <commando>"
     echo ""
     echo "Commando's:"
-    echo "  update    Git pull + image bouwen"
-    echo "  restart   Container herstarten met nieuw image (env vars uit Portainer)"
+    echo "  deploy    Alles in 1x: pull + build + restart"
+    echo "  update    Alleen git pull + image bouwen"
+    echo "  restart   Alleen container herstarten met nieuw image"
     echo "  logs      Live logs bekijken"
     echo "  status    Kijken of de container draait"
     echo "  shell     Shell openen in de container"
     echo "  backup    Data directory backuppen"
     echo ""
     echo "Typisch gebruik na code-wijziging:"
-    echo "  ./deploy.sh update && ./deploy.sh restart"
+    echo "  ./deploy.sh deploy"
     echo ""
     ;;
 
