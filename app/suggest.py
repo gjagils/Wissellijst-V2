@@ -158,31 +158,37 @@ def generate_block(sp, playlist_id, categorieen, history_file=None, max_per_arti
     return results if len(results) == len(categorieen) else None
 
 
-def initial_fill(playlist_id, categorieen, history_file=None, max_per_artiest=0,
-                  on_progress=None):
-    """Vul een playlist met 10 blokken + 1 volgend blokje.
+def initial_fill(playlist_id, categorieen, history_file=None, queue_file=None,
+                  max_per_artiest=0, aantal_blokken=10, on_progress=None):
+    """Vul een playlist met N blokken + 1 volgend blokje.
 
     Args:
         playlist_id: Spotify playlist ID
-        categorieen: lijst van categorieën (bijv. ["80s", "90s", "vrouwen met jazzy voice"])
+        categorieen: lijst van categorieën
         history_file: pad naar historie bestand (optioneel)
+        queue_file: pad naar wachtrij bestand (optioneel)
         max_per_artiest: max nummers per artiest (0 = onbeperkt)
+        aantal_blokken: aantal blokken voor de playlist (standaard 10)
         on_progress: callback(blok_nr, totaal, status_tekst) voor voortgang
 
     Returns: dict met resultaten
     """
     history_file = history_file or HISTORY_FILE
+    if not queue_file:
+        queue_file = os.path.join(os.path.dirname(history_file), "volgende_blokje.txt")
+
     sp = get_spotify_client()
     alle_tracks = []
     mislukt = 0
     max_retries = 3
+    totaal = aantal_blokken + 1  # +1 voor wachtrij
 
-    for blok_nr in range(1, 12):  # 10 voor playlist + 1 voor wachtrij
-        is_wachtrij = blok_nr == 11
-        label = "volgend blokje" if is_wachtrij else f"blok {blok_nr}/10"
+    for blok_nr in range(1, totaal + 1):
+        is_wachtrij = blok_nr == totaal
+        label = "volgend blokje" if is_wachtrij else f"blok {blok_nr}/{aantal_blokken}"
 
         if on_progress:
-            on_progress(blok_nr, 11, f"Genereren {label}...")
+            on_progress(blok_nr, totaal, f"Genereren {label}...")
 
         block = None
         for poging in range(max_retries):
@@ -196,15 +202,8 @@ def initial_fill(playlist_id, categorieen, history_file=None, max_per_artiest=0,
             continue
 
         if is_wachtrij:
-            # Laatste blok gaat naar de wachtrij
-            uris = [t["uri"] for t in block]
-            queue_file = os.path.join(os.path.dirname(history_file), "volgende_blokje.txt")
+            # Laatste blok gaat naar de wachtrij (volledig formaat)
             with open(queue_file, "w", encoding="utf-8") as f:
-                f.write("\n".join(uris))
-
-            # Schrijf ook leesbaar naar aanbevelingen
-            suggestions_file = os.path.join(os.path.dirname(history_file), "aanbevelingen.txt")
-            with open(suggestions_file, "w", encoding="utf-8") as f:
                 for t in block:
                     f.write(f"{t['categorie']} - {t['artiest']} - {t['titel']} - {t['uri']}\n")
         else:
@@ -222,7 +221,7 @@ def initial_fill(playlist_id, categorieen, history_file=None, max_per_artiest=0,
         "toegevoegd": len(alle_tracks),
         "blokken": len(alle_tracks) // len(categorieen) if categorieen else 0,
         "mislukt": mislukt,
-        "wachtrij_klaar": mislukt < 2,  # minimaal het wachtrij-blok is gelukt
+        "wachtrij_klaar": mislukt < 2,
     }
 
 
