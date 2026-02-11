@@ -6,14 +6,6 @@ services:
       - .env
     volumes:
       - ./data:/app/data
-    restart: "no"
-
-  suggest:
-    build: .
-    container_name: wissellijst-suggest
-    env_file:
-      - .env
-    volumes:
-      - ./data:/app/data
-    command: python suggest.py
-    restart: "no"
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
