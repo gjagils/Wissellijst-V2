@@ -47,21 +47,15 @@ sync_env() {
   info ".env aangemaakt vanuit container"
 }
 
-# Stop en verwijder de bestaande container (voorkomt name-conflict)
-remove_container() {
-  if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
-    echo "  Container '$CONTAINER' stoppen en verwijderen..."
+# Stop de container (Portainer start hem opnieuw via de stack)
+stop_container() {
+  if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
+    echo "  Container '$CONTAINER' stoppen..."
     docker stop "$CONTAINER" 2>/dev/null || true
-    docker rm "$CONTAINER" 2>/dev/null || true
-    info "Oude container verwijderd"
+    info "Container gestopt — start de stack opnieuw via Portainer"
+  else
+    warn "Container draait niet"
   fi
-}
-
-# Start container via compose
-start_container() {
-  remove_container
-  docker compose -f "$STACK_FILE" --env-file "$ENV_FILE" up -d
-  info "Container gestart"
 }
 
 case "${1:-help}" in
@@ -77,45 +71,46 @@ case "${1:-help}" in
     git pull origin main
     info "Code bijgewerkt"
 
-    echo "3/5 Docker image bouwen..."
+    echo "3/5 Container stoppen..."
+    stop_container
+
+    echo "4/5 Docker image bouwen..."
     docker build --no-cache -t "$IMAGE" .
     info "Image gebouwd"
 
-    echo "4/5 Opruimen..."
+    echo "5/5 Opruimen..."
     docker image prune -f
     info "Oude images opgeruimd"
 
-    echo "5/5 Container herstarten..."
-    start_container
-
     echo ""
-    info "Deploy compleet! App draait op poort 9090"
-    docker ps --filter "name=$CONTAINER" --format "table {{.Status}}\t{{.Ports}}"
+    info "Deploy klaar! Start de stack nu via Portainer."
     ;;
 
   update)
     echo "=== Wissellijst V2 updaten ==="
     cd "$PROJECT_DIR"
 
-    echo "1/3 Code ophalen..."
+    echo "1/4 Code ophalen..."
     git pull origin main
     info "Code bijgewerkt"
 
-    echo "2/3 Docker image bouwen..."
+    echo "2/4 Container stoppen..."
+    stop_container
+
+    echo "3/4 Docker image bouwen..."
     docker build --no-cache -t "$IMAGE" .
     info "Image gebouwd"
 
-    echo "3/3 Opruimen..."
+    echo "4/4 Opruimen..."
     docker image prune -f
-    info "Image klaar! Herstart nu via Portainer of: ./deploy.sh restart"
+    info "Image klaar! Start de stack nu via Portainer."
     ;;
 
   restart)
-    echo "=== Container herstarten ==="
-    cd "$PROJECT_DIR"
-    sync_env
-    start_container
-    docker ps --filter "name=$CONTAINER" --format "table {{.Status}}\t{{.Ports}}"
+    echo "=== Container stoppen ==="
+    stop_container
+    echo ""
+    info "Start de stack nu opnieuw via Portainer."
     ;;
 
   logs)
@@ -151,16 +146,16 @@ case "${1:-help}" in
     echo "Gebruik: ./deploy.sh <commando>"
     echo ""
     echo "Commando's:"
-    echo "  deploy    Alles in 1x: pull + build + restart"
-    echo "  update    Alleen git pull + image bouwen"
-    echo "  restart   Alleen container herstarten met nieuw image"
+    echo "  deploy    Alles in 1x: pull + stop + build (start daarna via Portainer)"
+    echo "  update    Git pull + stop + image bouwen (start daarna via Portainer)"
+    echo "  restart   Container stoppen (start daarna via Portainer)"
     echo "  logs      Live logs bekijken"
     echo "  status    Kijken of de container draait"
     echo "  shell     Shell openen in de container"
     echo "  backup    Data directory backuppen"
     echo ""
     echo "Typisch gebruik na code-wijziging:"
-    echo "  ./deploy.sh deploy"
+    echo "  ./deploy.sh deploy  (daarna stack starten in Portainer)"
     echo ""
     ;;
 
