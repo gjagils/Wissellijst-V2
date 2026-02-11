@@ -149,9 +149,10 @@
         /* New playlist modal */
         .modal-overlay {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.7); display: flex;
+            background: rgba(0,0,0,0.7); display: none;
             align-items: center; justify-content: center; z-index: 100;
         }
+        .modal-overlay.visible { display: flex; }
         .modal-content {
             background: #1e1e1e; border-radius: 12px; padding: 24px;
             width: 90%; max-width: 400px;
@@ -257,14 +258,14 @@
     </div>
 
     <!-- ============ MODAL: Nieuwe Spotify Playlist ============ -->
-    <div id="nieuwe-playlist-modal" class="modal-overlay hidden" onclick="sluitNieuwePlaylistModal(event)">
+    <div id="nieuwe-playlist-modal" class="modal-overlay" onclick="sluitNieuwePlaylistModal(event)">
         <div class="modal-content" onclick="event.stopPropagation()">
             <h2>Nieuwe Spotify Playlist</h2>
             <label for="nieuwe-playlist-naam">Naam</label>
             <input type="text" id="nieuwe-playlist-naam" placeholder="Bijv. Mijn wissellijst">
             <div class="btn-row">
                 <button class="btn btn-primary" onclick="maakNieuwePlaylist()">Aanmaken</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('nieuwe-playlist-modal').classList.add('hidden')">Annuleren</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('nieuwe-playlist-modal').classList.remove('visible')">Annuleren</button>
             </div>
         </div>
     </div>
@@ -536,12 +537,12 @@
         // --- Nieuwe Spotify Playlist ---
         function toonNieuwePlaylistModal() {
             document.getElementById('nieuwe-playlist-naam').value = '';
-            document.getElementById('nieuwe-playlist-modal').classList.remove('hidden');
+            document.getElementById('nieuwe-playlist-modal').classList.add('visible');
         }
 
         function sluitNieuwePlaylistModal(event) {
             if (event.target === event.currentTarget) {
-                document.getElementById('nieuwe-playlist-modal').classList.add('hidden');
+                document.getElementById('nieuwe-playlist-modal').classList.remove('visible');
             }
         }
 
@@ -565,7 +566,7 @@
                 // Select the new playlist
                 document.getElementById('playlist-select').value = result.id;
 
-                document.getElementById('nieuwe-playlist-modal').classList.add('hidden');
+                document.getElementById('nieuwe-playlist-modal').classList.remove('visible');
                 toonMelding(`Playlist "${result.naam}" aangemaakt op Spotify!`, 'ok');
             } catch (e) {
                 toonMelding('Playlist aanmaken mislukt: ' + e.message, 'fout');
