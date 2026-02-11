@@ -5,15 +5,10 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data:/app/data
-    restart: "no"
+      - wissellijst-data:/app/data
+    ports:
+      - "9090:5000"
+    restart: unless-stopped
 
-  suggest:
-    build: .
-    container_name: wissellijst-suggest
-    env_file:
-      - .env
-    volumes:
-      - ./data:/app/data
-    command: python suggest.py
-    restart: "no"
+volumes:
+  wissellijst-data:

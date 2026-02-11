@@ -1,4 +1,5 @@
 import os
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -7,7 +8,6 @@ load_dotenv()
 SPOTIFY_CLIENT_ID = os.environ["SPOTIFY_CLIENT_ID"]
 SPOTIFY_CLIENT_SECRET = os.environ["SPOTIFY_CLIENT_SECRET"]
 SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
-SPOTIFY_PLAYLIST_ID = os.environ["SPOTIFY_PLAYLIST_ID"]
 SPOTIFY_SCOPE = "playlist-modify-public playlist-modify-private"
 
 # OpenAI
@@ -19,3 +19,33 @@ QUEUE_FILE = os.path.join(DATA_DIR, "volgende_blokje.txt")
 HISTORY_FILE = os.path.join(DATA_DIR, "historie.txt")
 SUGGESTIONS_FILE = os.path.join(DATA_DIR, "aanbevelingen.txt")
 CACHE_PATH = os.path.join(DATA_DIR, ".cache")
+CONFIG_FILE = os.path.join(DATA_DIR, "wissellijsten.json")
+
+
+def load_wissellijsten():
+    """Laad alle wissellijst-configuraties uit JSON."""
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"wissellijsten": []}
+
+
+def save_wissellijsten(data):
+    """Sla wissellijst-configuraties op als JSON."""
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+def get_wissellijst(lijst_id):
+    """Haal een specifieke wissellijst op via ID."""
+    data = load_wissellijsten()
+    for wl in data["wissellijsten"]:
+        if wl["id"] == lijst_id:
+            return wl
+    return None
+
+
+def get_history_file(lijst_id):
+    """Geef het pad naar het historie-bestand voor een specifieke wissellijst."""
+    return os.path.join(DATA_DIR, f"historie_{lijst_id}.txt")

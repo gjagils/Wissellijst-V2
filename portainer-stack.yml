@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  wissellijst:
+    image: wissellijst-v2:latest
+    container_name: wissellijst-v2
+    environment:
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+      - SPOTIFY_REDIRECT_URI=${SPOTIFY_REDIRECT_URI:-http://127.0.0.1:8888/callback}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - /volume1/docker/wissellijst-v2/data:/app/data
+    ports:
+      - "9090:5000"
+    restart: unless-stopped

@@ -10,4 +10,6 @@ COPY app/ .
 # Data directory wordt als volume gemount
 VOLUME /app/data
 
-CMD ["python", "automation.py"]
+# Web interface
+EXPOSE 5000
+CMD ["python", "web.py"]
