@@ -13,7 +13,7 @@ from config import (
     SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI,
     SPOTIFY_SCOPE, CACHE_PATH,
 )
-from suggest import get_spotify_client, initial_fill, search_spotify, _parse_history_line
+from suggest import get_spotify_client, initial_fill, search_spotify, generate_block, _parse_history_line
 from automation import rotate_and_regenerate
 
 app = Flask(__name__)
@@ -334,6 +334,54 @@ def api_wachtrij_vervang(lijst_id):
 
     _write_queue(lijst_id, entries)
     return jsonify(entries)
+
+
+@app.route("/api/wissellijsten/<lijst_id>/wachtrij/genereer", methods=["POST"])
+def api_wachtrij_genereer(lijst_id):
+    """Genereer een nieuw wachtrij-blokje (async)."""
+    wl = get_wissellijst(lijst_id)
+    if not wl:
+        return jsonify({"error": "Wissellijst niet gevonden"}), 404
+
+    task_id = str(uuid.uuid4())[:8]
+    _tasks[task_id] = {"status": "bezig", "voortgang": 0, "tekst": "Wachtrij genereren...", "resultaat": None}
+
+    def run():
+        try:
+            _tasks[task_id]["voortgang"] = 20
+            _tasks[task_id]["tekst"] = "Nieuw blokje genereren..."
+
+            sp = get_spotify_client()
+            history_file = get_history_file(lijst_id)
+            max_retries = 3
+            block = None
+
+            for attempt in range(max_retries):
+                _tasks[task_id]["voortgang"] = 20 + (attempt * 25)
+                block = generate_block(sp, wl["playlist_id"], wl["categorieen"],
+                                       history_file=history_file,
+                                       max_per_artiest=wl.get("max_per_artiest", 0))
+                if block:
+                    break
+
+            if block:
+                _write_queue(lijst_id, block)
+                _tasks[task_id]["status"] = "klaar"
+                _tasks[task_id]["voortgang"] = 100
+                _tasks[task_id]["tekst"] = f"Wachtrij aangemaakt: {len(block)} tracks"
+                _tasks[task_id]["resultaat"] = {"tracks": len(block)}
+            else:
+                _tasks[task_id]["status"] = "fout"
+                _tasks[task_id]["tekst"] = "Kon geen blokje genereren na 3 pogingen"
+
+        except Exception as e:
+            _tasks[task_id]["status"] = "fout"
+            _tasks[task_id]["tekst"] = str(e)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+
+    return jsonify({"task_id": task_id})
 
 
 # --- Rotatie ---

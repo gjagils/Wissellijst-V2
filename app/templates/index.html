@@ -237,6 +237,13 @@
         <div id="tab-content-wachtrij" class="card hidden">
             <h2>Volgend blokje</h2>
             <p class="status-tekst" id="wachtrij-status"></p>
+            <div id="wachtrij-acties" class="hidden" style="margin-bottom:12px;">
+                <button class="btn btn-primary" id="btn-genereer-wachtrij" onclick="genereerWachtrij()">Wachtrij aanmaken</button>
+            </div>
+            <div id="wachtrij-voortgang" class="hidden">
+                <div class="progress-bar"><div class="progress-fill" id="wachtrij-progress-fill"></div></div>
+                <p class="status-tekst" id="wachtrij-voortgang-tekst">Genereren...</p>
+            </div>
             <div class="wachtrij-lijst" id="wachtrij-lijst"></div>
         </div>
 
@@ -808,11 +815,48 @@
         }
 
         // --- Wachtrij ---
+        async function genereerWachtrij() {
+            if (!activeLijstId) return;
+
+            const btn = document.getElementById('btn-genereer-wachtrij');
+            btn.disabled = true;
+
+            const voortgangDiv = document.getElementById('wachtrij-voortgang');
+            voortgangDiv.classList.remove('hidden');
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/wachtrij/genereer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const { task_id } = await res.json();
+
+                pollTask(task_id, (status) => {
+                    document.getElementById('wachtrij-progress-fill').style.width = status.voortgang + '%';
+                    document.getElementById('wachtrij-voortgang-tekst').textContent = status.tekst;
+                }, (status) => {
+                    voortgangDiv.classList.add('hidden');
+                    toonMelding(status.tekst, 'ok');
+                    btn.disabled = false;
+                    laadWachtrij();
+                }, (status) => {
+                    voortgangDiv.classList.add('hidden');
+                    toonMelding('Fout: ' + status.tekst, 'fout');
+                    btn.disabled = false;
+                });
+            } catch (e) {
+                voortgangDiv.classList.add('hidden');
+                toonMelding('Kon wachtrij niet genereren: ' + e.message, 'fout');
+                btn.disabled = false;
+            }
+        }
+
         async function laadWachtrij() {
             if (!activeLijstId) return;
 
             const lijst = document.getElementById('wachtrij-lijst');
             const status = document.getElementById('wachtrij-status');
+            const actiesDiv = document.getElementById('wachtrij-acties');
 
             try {
                 const res = await fetch(`/api/wissellijsten/${activeLijstId}/wachtrij`);
@@ -821,7 +865,9 @@
                 if (entries.length === 0) {
                     status.textContent = 'Geen tracks in de wachtrij.';
                     lijst.innerHTML = '';
+                    actiesDiv.classList.remove('hidden');
                 } else {
+                    actiesDiv.classList.add('hidden');
                     status.textContent = `${entries.length} tracks klaar voor de volgende rotatie`;
                     lijst.innerHTML = entries.map((e, i) => `
                         <div class="wachtrij-item">

@@ -22,13 +22,19 @@ info()  { echo -e "${GREEN}[OK]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[!!]${NC} $1"; }
 error() { echo -e "${RED}[FOUT]${NC} $1"; }
 
-# Env vars uit draaiende Portainer container halen en als .env opslaan
+# Env vars uit Portainer container halen en als .env opslaan
 ENV_FILE="$PROJECT_DIR/.env"
 ENV_KEYS="SPOTIFY_CLIENT_ID SPOTIFY_CLIENT_SECRET SPOTIFY_REDIRECT_URI OPENAI_API_KEY"
 
 sync_env() {
+  # Werkt op zowel draaiende als gestopte containers
   if ! docker inspect "$CONTAINER" > /dev/null 2>&1; then
-    error "Container '$CONTAINER' niet gevonden. Kan env vars niet ophalen."
+    if [ -f "$ENV_FILE" ]; then
+      warn "Container niet gevonden, gebruik bestaande .env"
+      return 0
+    fi
+    error "Container '$CONTAINER' niet gevonden en geen .env aanwezig."
+    error "Maak handmatig een .env aan op basis van .env.example"
     exit 1
   fi
   echo "# Auto-generated from Portainer container env vars" > "$ENV_FILE"
@@ -38,7 +44,24 @@ sync_env() {
       echo "$VALUE" >> "$ENV_FILE"
     fi
   done
-  info ".env aangemaakt vanuit Portainer container"
+  info ".env aangemaakt vanuit container"
+}
+
+# Stop en verwijder de bestaande container (voorkomt name-conflict)
+remove_container() {
+  if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
+    echo "  Container '$CONTAINER' stoppen en verwijderen..."
+    docker stop "$CONTAINER" 2>/dev/null || true
+    docker rm "$CONTAINER" 2>/dev/null || true
+    info "Oude container verwijderd"
+  fi
+}
+
+# Start container via compose
+start_container() {
+  remove_container
+  docker compose -f "$STACK_FILE" --env-file "$ENV_FILE" up -d
+  info "Container gestart"
 }
 
 case "${1:-help}" in
@@ -47,24 +70,23 @@ case "${1:-help}" in
     echo "=== Wissellijst V2 - Volledige deploy ==="
     cd "$PROJECT_DIR"
 
-    echo "1/4 Code ophalen..."
+    echo "1/5 Env vars ophalen uit container..."
+    sync_env
+
+    echo "2/5 Code ophalen..."
     git pull origin main
     info "Code bijgewerkt"
 
-    echo "2/4 Docker image bouwen..."
+    echo "3/5 Docker image bouwen..."
     docker build --no-cache -t "$IMAGE" .
     info "Image gebouwd"
 
-    echo "3/4 Opruimen..."
+    echo "4/5 Opruimen..."
     docker image prune -f
     info "Oude images opgeruimd"
 
-    echo "4/5 Env vars ophalen uit Portainer container..."
-    sync_env
-
-    echo "5/5 Container herstarten via stack..."
-    docker compose -f "$STACK_FILE" --env-file "$ENV_FILE" up -d --force-recreate
-    info "Container herstart via stack met .env variabelen"
+    echo "5/5 Container herstarten..."
+    start_container
 
     echo ""
     info "Deploy compleet! App draait op poort 9090"
@@ -89,11 +111,11 @@ case "${1:-help}" in
     ;;
 
   restart)
-    echo "=== Container herstarten via stack ==="
+    echo "=== Container herstarten ==="
     cd "$PROJECT_DIR"
     sync_env
-    docker compose -f "$STACK_FILE" --env-file "$ENV_FILE" up -d --force-recreate
-    info "Container herstart via stack met .env variabelen"
+    start_container
+    docker ps --filter "name=$CONTAINER" --format "table {{.Status}}\t{{.Ports}}"
     ;;
 
   logs)
