@@ -67,6 +67,19 @@
         .status-tekst { color: #b3b3b3; font-size: 0.85em; margin-bottom: 8px; }
         .hidden { display: none; }
 
+        .historie-lijst {
+            max-height: 400px; overflow-y: auto; margin-top: 12px;
+        }
+        .historie-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 12px; background: #2a2a2a; border-radius: 4px;
+            margin-bottom: 4px; font-size: 0.85em;
+        }
+        .historie-item-artiest { color: #1db954; }
+        .historie-item-titel { color: #e0e0e0; }
+        .historie-item-cat { color: #888; font-size: 0.8em; }
+        .historie-count { color: #888; font-size: 0.85em; margin-top: 8px; }
+
         #melding {
             padding: 12px; border-radius: 6px; margin-bottom: 16px;
             font-size: 0.9em;
@@ -110,6 +123,9 @@
             <button class="btn btn-secondary" onclick="categorieVerwijderen()" style="font-size:0.85em; padding:6px 14px;">- Categorie</button>
         </div>
 
+        <label for="max-per-artiest" style="margin-top:12px;">Max liedjes per artiest (0 = onbeperkt)</label>
+        <input type="number" id="max-per-artiest" min="0" max="99" value="0" placeholder="0 = onbeperkt">
+
         <div class="btn-row" style="margin-top:16px;">
             <button class="btn btn-primary" onclick="opslaan()">Opslaan</button>
             <button class="btn btn-secondary" onclick="annuleren()">Annuleren</button>
@@ -122,11 +138,19 @@
         <p class="status-tekst" id="actie-info"></p>
         <div class="btn-row">
             <button class="btn btn-primary" id="btn-vullen" onclick="initiëelVullen()">Initieel vullen (10 blokken)</button>
+            <button class="btn btn-secondary" id="btn-historie" onclick="toonHistorie()">Historie</button>
         </div>
         <div id="voortgang-container" class="hidden">
             <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
             <p class="status-tekst" id="voortgang-tekst">Starten...</p>
         </div>
+    </div>
+
+    <!-- Historie -->
+    <div id="historie" class="card hidden">
+        <h2>Historie</h2>
+        <p class="historie-count" id="historie-count"></p>
+        <div class="historie-lijst" id="historie-lijst"></div>
     </div>
 
     <script>
@@ -209,10 +233,12 @@
             const actieDiv = document.getElementById('acties');
             const infoEl = document.getElementById('actie-info');
             actieDiv.classList.remove('hidden');
-            infoEl.textContent = `${wl.naam} — ${wl.categorieen.join(', ')}`;
+            const maxInfo = wl.max_per_artiest ? ` · max ${wl.max_per_artiest}/artiest` : '';
+            infoEl.textContent = `${wl.naam} — ${wl.categorieen.join(', ')}${maxInfo}`;
 
             document.getElementById('voortgang-container').classList.add('hidden');
             document.getElementById('btn-vullen').disabled = false;
+            document.getElementById('historie').classList.add('hidden');
         }
 
         // --- Editor ---
@@ -221,6 +247,7 @@
             document.getElementById('editor-titel').textContent = 'Nieuwe Wissellijst';
             document.getElementById('naam').value = '';
             document.getElementById('playlist-select').value = '';
+            document.getElementById('max-per-artiest').value = '0';
             zetCategorieen(['80s', '90s', '00s', '10s', '20s']);
             document.getElementById('editor').classList.remove('hidden');
         }
@@ -231,6 +258,7 @@
             document.getElementById('editor-titel').textContent = 'Bewerk Wissellijst';
             document.getElementById('naam').value = wl.naam;
             document.getElementById('playlist-select').value = wl.playlist_id;
+            document.getElementById('max-per-artiest').value = wl.max_per_artiest || 0;
             zetCategorieen(wl.categorieen);
             document.getElementById('editor').classList.remove('hidden');
         }
@@ -285,10 +313,13 @@
             if (!playlistId) return toonMelding('Kies een playlist.', 'fout');
             if (categorieen.length < 2) return toonMelding('Vul minimaal 2 categorieën in.', 'fout');
 
+            const maxPerArtiest = parseInt(document.getElementById('max-per-artiest').value) || 0;
+
             const body = {
                 naam,
                 playlist_id: playlistId,
                 categorieen,
+                max_per_artiest: maxPerArtiest,
             };
             if (editLijstId) body.id = editLijstId;
 
@@ -358,6 +389,40 @@
             } catch (e) {
                 toonMelding('Kon vullen niet starten: ' + e.message, 'fout');
                 btn.disabled = false;
+            }
+        }
+
+        // --- Historie ---
+        async function toonHistorie() {
+            if (!activeLijstId) return;
+
+            const historieDiv = document.getElementById('historie');
+            const lijst = document.getElementById('historie-lijst');
+            const count = document.getElementById('historie-count');
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/historie`);
+                const entries = await res.json();
+
+                if (entries.length === 0) {
+                    count.textContent = 'Nog geen historie.';
+                    lijst.innerHTML = '';
+                } else {
+                    count.textContent = `${entries.length} nummers in historie`;
+                    lijst.innerHTML = entries.reverse().map(e => `
+                        <div class="historie-item">
+                            <div>
+                                <span class="historie-item-artiest">${e.artiest}</span>
+                                <span class="historie-item-titel"> — ${e.titel}</span>
+                            </div>
+                            <span class="historie-item-cat">${e.categorie}</span>
+                        </div>
+                    `).join('');
+                }
+
+                historieDiv.classList.remove('hidden');
+            } catch (e) {
+                toonMelding('Kan historie niet laden: ' + e.message, 'fout');
             }
         }
 

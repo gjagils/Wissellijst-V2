@@ -44,3 +44,8 @@ def get_wissellijst(lijst_id):
         if wl["id"] == lijst_id:
             return wl
     return None
+
+
+def get_history_file(lijst_id):
+    """Geef het pad naar het historie-bestand voor een specifieke wissellijst."""
+    return os.path.join(DATA_DIR, f"historie_{lijst_id}.txt")

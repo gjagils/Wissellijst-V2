@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 import uuid
 import threading
 from flask import Flask, render_template, request, jsonify, redirect
@@ -6,10 +7,10 @@ from spotipy.oauth2 import SpotifyOAuth
 
 from config import (
     load_wissellijsten, save_wissellijsten, get_wissellijst,
-    DATA_DIR, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET,
+    get_history_file, DATA_DIR, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET,
     SPOTIFY_REDIRECT_URI, SPOTIFY_SCOPE, CACHE_PATH,
 )
-from suggest import get_spotify_client, initial_fill
+from suggest import get_spotify_client, initial_fill, load_history
 
 app = Flask(__name__)
 
@@ -141,6 +142,8 @@ def api_vullen():
             result = initial_fill(
                 playlist_id=wl["playlist_id"],
                 categorieen=wl["categorieen"],
+                history_file=get_history_file(lijst_id),
+                max_per_artiest=wl.get("max_per_artiest", 0),
                 on_progress=on_progress,
             )
             _tasks[task_id]["status"] = "klaar"
@@ -164,6 +167,33 @@ def api_vullen_status(task_id):
     if not task:
         return jsonify({"error": "Taak niet gevonden"}), 404
     return jsonify(task)
+
+
+@app.route("/api/wissellijsten/<lijst_id>/historie")
+def api_historie(lijst_id):
+    """Haal de historie op van een wissellijst."""
+    wl = get_wissellijst(lijst_id)
+    if not wl:
+        return jsonify({"error": "Wissellijst niet gevonden"}), 404
+
+    history_file = get_history_file(lijst_id)
+    entries = []
+    if os.path.exists(history_file):
+        with open(history_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(" - ")
+                if len(parts) >= 4:
+                    entries.append({
+                        "categorie": parts[0].strip(),
+                        "artiest": parts[1].strip(),
+                        "titel": parts[2].strip(),
+                        "uri": parts[3].strip(),
+                    })
+
+    return jsonify(entries)
 
 
 if __name__ == "__main__":
