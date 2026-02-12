@@ -403,6 +403,14 @@
                 </div>
             </div>
 
+            <label style="margin-top:12px;">
+                <input type="checkbox" id="mail-na-rotatie" onchange="onMailToggle()"> E-mail notificatie na rotatie
+            </label>
+            <div id="mail-opties" class="hidden">
+                <label for="mail-adres">E-mailadres</label>
+                <input type="email" id="mail-adres" placeholder="naam@voorbeeld.nl">
+            </div>
+
             <div class="btn-row" style="margin-top:16px;">
                 <button class="btn btn-primary" onclick="opslaan()">Opslaan</button>
                 <button class="btn btn-secondary" onclick="annuleren()">Annuleren</button>
@@ -820,6 +828,9 @@
                     const dt = new Date(wl.laatste_rotatie);
                     schemaText += ` \u00b7 Laatste: ${dt.toLocaleDateString('nl-NL')} ${dt.toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit'})}`;
                 }
+                if (wl.mail_na_rotatie && wl.mail_adres) {
+                    schemaText += ` \u00b7 Mail naar ${wl.mail_adres}`;
+                }
                 scheduleDiv.innerHTML = `<div class="schedule-info">${schemaText}</div>`;
             } else {
                 scheduleDiv.innerHTML = '';
@@ -857,8 +868,11 @@
             document.getElementById('blok-grootte').value = '10';
             document.getElementById('smaakprofiel-data').value = '';
             document.getElementById('smaak-preview').textContent = 'Nog geen smaakprofiel opgehaald. Klik op de knop hierboven.';
+            document.getElementById('mail-na-rotatie').checked = false;
+            document.getElementById('mail-adres').value = '';
 
             onRotatieSchemaChange();
+            onMailToggle();
             setEditorType(type);
 
             if (type === 'categorie') {
@@ -886,8 +900,11 @@
             document.getElementById('blok-grootte').value = wl.blok_grootte || 10;
             document.getElementById('smaakprofiel-data').value = wl.smaakprofiel || '';
             document.getElementById('smaak-preview').textContent = wl.smaakprofiel || 'Nog geen smaakprofiel. Klik op ophalen.';
+            document.getElementById('mail-na-rotatie').checked = !!wl.mail_na_rotatie;
+            document.getElementById('mail-adres').value = wl.mail_adres || '';
 
             onRotatieSchemaChange();
+            onMailToggle();
             setEditorType(type);
 
             if (type === 'discovery') {
@@ -918,6 +935,11 @@
                 opties.classList.remove('hidden');
                 dagContainer.classList.toggle('hidden', schema !== 'wekelijks');
             }
+        }
+
+        function onMailToggle() {
+            const checked = document.getElementById('mail-na-rotatie').checked;
+            document.getElementById('mail-opties').classList.toggle('hidden', !checked);
         }
 
         function zetCategorieen(lijst) {
@@ -979,6 +1001,8 @@
                 rotatie_schema: rotatieSchema,
                 rotatie_tijdstip: rotatieTijdstip,
                 rotatie_dag: rotatieDag,
+                mail_na_rotatie: document.getElementById('mail-na-rotatie').checked,
+                mail_adres: document.getElementById('mail-adres').value.trim(),
             };
 
             if (type === 'discovery') {

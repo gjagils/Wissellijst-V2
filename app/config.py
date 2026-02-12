@@ -13,6 +13,13 @@ SPOTIFY_SCOPE = "playlist-read-private playlist-modify-public playlist-modify-pr
 # OpenAI
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
+# E-mail (optioneel)
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASS = os.getenv("SMTP_PASS", "")
+MAIL_FROM = os.getenv("MAIL_FROM", "")
+
 # Paden
 DATA_DIR = os.getenv("DATA_DIR", "/app/data")
 QUEUE_FILE = os.path.join(DATA_DIR, "volgende_blokje.txt")
