@@ -27,6 +27,7 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None):
 
     # Lees wachtrij - ondersteunt zowel URI-only als volledig formaat
     new_uris = []
+    new_tracks_detail = []
     with open(queue_file, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -35,6 +36,7 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None):
             parsed = _parse_history_line(line)
             if parsed:
                 new_uris.append(parsed["uri"])
+                new_tracks_detail.append({"artiest": parsed["artiest"], "titel": parsed["titel"]})
             elif line.startswith("spotify:"):
                 new_uris.append(line)
 
@@ -48,6 +50,7 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None):
     # Haal huidige playlist op en log de oudste naar historie
     current_items = sp.playlist_items(playlist_id, limit=50)["items"]
     tracks_to_remove = []
+    removed_tracks_detail = []
 
     with open(history_file, "a", encoding="utf-8") as hf:
         for item in current_items[:block_size]:
@@ -60,12 +63,26 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None):
             uri = track["uri"]
             hf.write(f"{decade} - {artist} - {name} - {uri}\n")
             tracks_to_remove.append(uri)
+            removed_tracks_detail.append({"artiest": artist, "titel": name})
 
     # Verwijder oud, voeg nieuw toe
     if tracks_to_remove:
         sp.playlist_remove_all_occurrences_of_items(playlist_id, tracks_to_remove)
         sp.playlist_add_items(playlist_id, new_uris)
         print("Playlist succesvol geroteerd.")
+
+    # Haal details op voor nieuwe tracks als die URI-only waren
+    if new_uris and not new_tracks_detail:
+        try:
+            tracks_info = sp.tracks(new_uris)
+            for t in tracks_info.get("tracks", []):
+                if t:
+                    new_tracks_detail.append({
+                        "artiest": t["artists"][0]["name"],
+                        "titel": t["name"],
+                    })
+        except Exception:
+            pass
 
     # Wachtrij leegmaken
     with open(queue_file, "w") as f:
@@ -76,6 +93,8 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None):
         "tekst": f"{len(tracks_to_remove)} nummers geroteerd.",
         "verwijderd": len(tracks_to_remove),
         "toegevoegd": len(new_uris),
+        "verwijderd_detail": removed_tracks_detail,
+        "toegevoegd_detail": new_tracks_detail,
     }
 
 

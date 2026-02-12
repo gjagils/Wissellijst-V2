@@ -19,6 +19,7 @@ from discovery import (
     build_taste_profile, generate_discovery_block, initial_fill_discovery,
 )
 from automation import rotate_and_regenerate
+from mail import mail_configured, send_rotation_mail
 
 app = Flask(__name__)
 
@@ -626,6 +627,14 @@ def api_roteren(lijst_id):
                     break
             save_wissellijsten(data)
 
+            # Stuur e-mail notificatie als ingeschakeld
+            if wl.get("mail_na_rotatie") and wl.get("mail_adres") and result.get("status") == "ok":
+                send_rotation_mail(
+                    wl["mail_adres"], wl["naam"],
+                    result.get("verwijderd_detail", []),
+                    result.get("toegevoegd_detail", []),
+                )
+
         except Exception as e:
             _tasks[task_id]["status"] = "fout"
             _tasks[task_id]["tekst"] = str(e)
@@ -691,6 +700,15 @@ def _check_schedules():
                     save_wissellijsten(data)
 
                     print(f"[Scheduler] Rotatie klaar: {wl['naam']} - {result['tekst']}")
+
+                    # Stuur e-mail notificatie als ingeschakeld
+                    if wl.get("mail_na_rotatie") and wl.get("mail_adres") and result.get("status") == "ok":
+                        send_rotation_mail(
+                            wl["mail_adres"], wl["naam"],
+                            result.get("verwijderd_detail", []),
+                            result.get("toegevoegd_detail", []),
+                        )
+
                 except Exception as e:
                     print(f"[Scheduler] Rotatie fout voor {wl['naam']}: {e}")
 
