@@ -1036,7 +1036,7 @@
                 if (data.ok) {
                     toonMelding(data.tekst, 'ok');
                     await laadPlaylists();
-                    toonDetail(id);
+                    vulDetailPagina();
                 } else {
                     toonMelding('Herstarten mislukt: ' + (data.error || 'onbekend'), 'fout');
                 }
