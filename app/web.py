@@ -701,6 +701,20 @@ def _check_schedules():
                                 continue
                         except ValueError:
                             pass
+
+                elif schema == "elke_3_uur":
+                    # Elke 3 uur roteren, op minuut 0
+                    if now.minute != 0:
+                        continue
+
+                    # Check of er minstens 3 uur verstreken zijn
+                    if laatste:
+                        try:
+                            laatste_dt = datetime.datetime.fromisoformat(laatste)
+                            if (now - laatste_dt).total_seconds() < 3 * 3600:
+                                continue
+                        except ValueError:
+                            pass
                 else:
                     tijdstip = wl.get("rotatie_tijdstip", "08:00")
                     try:

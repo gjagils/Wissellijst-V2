@@ -385,6 +385,7 @@
             <select id="rotatie-schema" onchange="onRotatieSchemaChange()">
                 <option value="uit">Uit</option>
                 <option value="elk_uur">Elk uur</option>
+                <option value="elke_3_uur">Elke 3 uur</option>
                 <option value="dagelijks">Dagelijks</option>
                 <option value="wekelijks">Wekelijks</option>
             </select>
@@ -834,6 +835,8 @@
                 let schemaText;
                 if (schema === 'elk_uur') {
                     schemaText = 'Automatische rotatie: elk uur';
+                } else if (schema === 'elke_3_uur') {
+                    schemaText = 'Automatische rotatie: elke 3 uur';
                 } else {
                     schemaText = `Automatische rotatie: ${schema} om ${tijdstip}`;
                     if (schema === 'wekelijks') {
@@ -945,7 +948,7 @@
             const opties = document.getElementById('rotatie-opties');
             const dagContainer = document.getElementById('rotatie-dag-container');
 
-            if (schema === 'uit' || schema === 'elk_uur') {
+            if (schema === 'uit' || schema === 'elk_uur' || schema === 'elke_3_uur') {
                 opties.classList.add('hidden');
             } else {
                 opties.classList.remove('hidden');
