@@ -444,6 +444,20 @@ def api_historie_verwijderen(lijst_id, entry_index):
     return jsonify({"ok": True})
 
 
+@app.route("/api/wissellijsten/<lijst_id>/historie", methods=["DELETE"])
+def api_historie_wissen(lijst_id):
+    """Wis de volledige historie van een wissellijst."""
+    wl = get_wissellijst(lijst_id)
+    if not wl:
+        return jsonify({"error": "Wissellijst niet gevonden"}), 404
+
+    history_file = get_history_file(lijst_id)
+    if os.path.exists(history_file):
+        os.remove(history_file)
+
+    return jsonify({"ok": True, "tekst": f"Historie van '{wl['naam']}' gewist."})
+
+
 # --- Wachtrij ---
 
 def _read_queue(lijst_id):
