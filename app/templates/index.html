@@ -856,12 +856,12 @@
             if (type === 'discovery') {
                 document.getElementById('editor-categorie-velden').classList.add('hidden');
                 document.getElementById('editor-discovery-velden').classList.remove('hidden');
-                document.getElementById('aantal-blokken').value = '5';
+                if (!editLijstId) document.getElementById('aantal-blokken').value = '5';
                 vulBronPlaylists();
             } else {
                 document.getElementById('editor-categorie-velden').classList.remove('hidden');
                 document.getElementById('editor-discovery-velden').classList.add('hidden');
-                document.getElementById('aantal-blokken').value = '10';
+                if (!editLijstId) document.getElementById('aantal-blokken').value = '10';
             }
         }
 
