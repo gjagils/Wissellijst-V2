@@ -9,6 +9,7 @@ from config import (
     OPENAI_API_KEY, HISTORY_FILE, SUGGESTIONS_FILE, QUEUE_FILE,
 )
 import os
+import re
 
 
 def get_spotify_client():
@@ -90,16 +91,22 @@ def load_history(history_file=None):
     return artists, uris, artist_counts
 
 
-def ask_gpt_for_suggestions(categorieen, exclude_artists):
-    """Vraag GPT om suggesties op basis van vrije categorieën."""
+def ask_gpt_for_suggestions(categorieen, exclude_artists, per_categorie=3):
+    """Vraag GPT om suggesties op basis van vrije categorieën.
+
+    Args:
+        per_categorie: aantal alternatieven per categorie (standaard 3)
+    """
     client = OpenAI(api_key=OPENAI_API_KEY)
 
     cat_beschrijving = ", ".join(f"{i+1}. {c}" for i, c in enumerate(categorieen))
+    totaal = len(categorieen) * per_categorie
 
     prompt = (
-        f"Geef {len(categorieen)} muziek suggesties, exact één per categorie.\n"
+        f"Geef {per_categorie} muziek suggesties per categorie, dus {totaal} regels totaal.\n"
         f"Categorieën: {cat_beschrijving}\n"
-        f"NIET GEBRUIKEN (staan in playlist of historie): {', '.join(exclude_artists[:50])}.\n"
+        f"NIET GEBRUIKEN (staan in playlist of historie): {', '.join(exclude_artists[:80])}.\n"
+        "Zorg dat alle artiesten VERSCHILLEND zijn.\n"
         "Syntax per regel: categorie | artiest | titel\n"
         "Geef ALLEEN de regels, geen extra tekst."
     )
@@ -114,8 +121,32 @@ def ask_gpt_for_suggestions(categorieen, exclude_artists):
     return response.choices[0].message.content.strip().split("\n")
 
 
+def _match_categorie(raw_cat, categorieen, filled):
+    """Match een GPT-categorie aan de originele categorieën.
+
+    Probeert exact, dan case-insensitive, dan substring matching.
+    Skipt categorieën die al gevuld zijn.
+    """
+    raw_lower = raw_cat.lower().strip()
+    # Verwijder eventuele nummering (bijv. "1. 80s" -> "80s")
+    raw_clean = re.sub(r'^\d+[\.\)]\s*', '', raw_lower)
+
+    for cat in categorieen:
+        if cat in filled:
+            continue
+        cat_lower = cat.lower().strip()
+        if cat_lower == raw_clean or cat_lower == raw_lower:
+            return cat
+        if cat_lower in raw_clean or raw_clean in cat_lower:
+            return cat
+    return None
+
+
 def generate_block(sp, playlist_id, categorieen, history_file=None, max_per_artiest=0):
     """Genereer één blok suggesties (1 per categorie), gevalideerd op Spotify.
+
+    Vraagt GPT om meerdere alternatieven per categorie en kiest de eerste
+    die geldig is (gevonden op Spotify, niet in historie, niet geblokkeerd).
 
     Args:
         max_per_artiest: max nummers per artiest (0 = onbeperkt)
@@ -139,11 +170,14 @@ def generate_block(sp, playlist_id, categorieen, history_file=None, max_per_arti
     else:
         blocked_artists = []
 
-    exclude = list(set(active_artists[:25] + history_artists[-25:] + blocked_artists))
+    # Meer artiesten meesturen naar GPT voor betere uitsluiting
+    exclude = list(set(active_artists + history_artists[-50:] + blocked_artists))
 
-    raw_suggestions = ask_gpt_for_suggestions(categorieen, exclude)
+    raw_suggestions = ask_gpt_for_suggestions(categorieen, exclude, per_categorie=3)
 
-    results = []
+    filled = {}  # categorie -> result dict
+    used_uris = set(history_uris)
+
     for line in raw_suggestions:
         if "|" not in line:
             continue
@@ -151,31 +185,62 @@ def generate_block(sp, playlist_id, categorieen, history_file=None, max_per_arti
         if len(parts) < 3:
             continue
 
-        categorie = parts[0].strip()
+        raw_cat = parts[0].strip()
         artist = parts[1].strip()
         title = parts[2].strip()
 
+        # Match aan originele categorie (skip al gevulde)
+        matched_cat = _match_categorie(raw_cat, categorieen, filled)
+        if not matched_cat:
+            continue
+
         # Check max per artiest
         if max_per_artiest > 0 and artist_counts.get(artist, 0) >= max_per_artiest:
+            print(f"  [block] Skip {artist} - {title}: artiest op max ({max_per_artiest})",
+                  flush=True)
             continue
 
         uri = search_spotify(sp, artist, title)
-        if uri and uri not in history_uris:
-            results.append({
-                "categorie": categorie,
-                "artiest": artist,
-                "titel": title,
-                "uri": uri,
-            })
-            # Update count voor dit blok
-            artist_counts[artist] = artist_counts.get(artist, 0) + 1
+        if not uri:
+            print(f"  [block] Skip {artist} - {title}: niet gevonden op Spotify",
+                  flush=True)
+            continue
+        if uri in used_uris:
+            print(f"  [block] Skip {artist} - {title}: al in historie",
+                  flush=True)
+            continue
 
-    return results if len(results) == len(categorieen) else None
+        filled[matched_cat] = {
+            "categorie": matched_cat,
+            "artiest": artist,
+            "titel": title,
+            "uri": uri,
+        }
+        used_uris.add(uri)
+        # Update count voor dit blok
+        artist_counts[artist] = artist_counts.get(artist, 0) + 1
+        print(f"  [block] {matched_cat}: {artist} - {title} ✓", flush=True)
+
+        # Stop vroeg als alles gevuld is
+        if len(filled) == len(categorieen):
+            break
+
+    if len(filled) < len(categorieen):
+        missing = [c for c in categorieen if c not in filled]
+        print(f"  [block] Onvolledig blok: {len(filled)}/{len(categorieen)}, "
+              f"missend: {missing}", flush=True)
+        return None
+
+    # Geef resultaten terug in volgorde van categorieën
+    return [filled[c] for c in categorieen]
 
 
 def initial_fill(playlist_id, categorieen, history_file=None, queue_file=None,
                   max_per_artiest=0, aantal_blokken=10, on_progress=None):
     """Vul een playlist met N blokken + 1 volgend blokje.
+
+    Houdt rekening met bestaande tracks: als de playlist al tracks bevat,
+    worden alleen de resterende blokken aangevuld.
 
     Args:
         playlist_id: Spotify playlist ID
@@ -193,14 +258,33 @@ def initial_fill(playlist_id, categorieen, history_file=None, queue_file=None,
         queue_file = os.path.join(os.path.dirname(history_file), "volgende_blokje.txt")
 
     sp = get_spotify_client()
+
+    # Check hoeveel tracks al in de playlist zitten
+    block_size = len(categorieen)
+    bestaande_tracks = sp.playlist_tracks(playlist_id, fields="total")["total"]
+    bestaande_blokken = bestaande_tracks // block_size if block_size else 0
+
+    if bestaande_blokken >= aantal_blokken:
+        print(f"[fill] Playlist heeft al {bestaande_tracks} tracks "
+              f"({bestaande_blokken} blokken), doel is {aantal_blokken}. "
+              f"Alleen wachtrij genereren.", flush=True)
+        nog_te_vullen = 0
+    else:
+        nog_te_vullen = aantal_blokken - bestaande_blokken
+        if bestaande_blokken > 0:
+            print(f"[fill] Playlist heeft al {bestaande_tracks} tracks "
+                  f"({bestaande_blokken} blokken), nog {nog_te_vullen} blokken "
+                  f"nodig.", flush=True)
+
     alle_tracks = []
     mislukt = 0
     max_retries = 3
-    totaal = aantal_blokken + 1  # +1 voor wachtrij
+    totaal = nog_te_vullen + 1  # +1 voor wachtrij
 
     for blok_nr in range(1, totaal + 1):
         is_wachtrij = blok_nr == totaal
-        label = "volgend blokje" if is_wachtrij else f"blok {blok_nr}/{aantal_blokken}"
+        actual_blok = bestaande_blokken + blok_nr
+        label = "volgend blokje" if is_wachtrij else f"blok {actual_blok}/{aantal_blokken}"
 
         if on_progress:
             on_progress(blok_nr, totaal, f"Genereren {label}...")
@@ -234,7 +318,7 @@ def initial_fill(playlist_id, categorieen, history_file=None, queue_file=None,
 
     return {
         "toegevoegd": len(alle_tracks),
-        "blokken": len(alle_tracks) // len(categorieen) if categorieen else 0,
+        "blokken": (bestaande_blokken + len(alle_tracks) // block_size) if block_size else 0,
         "mislukt": mislukt,
         "wachtrij_klaar": mislukt < 2,
     }
