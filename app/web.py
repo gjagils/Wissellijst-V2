@@ -660,31 +660,47 @@ def _check_schedules():
                 if schema == "uit":
                     continue
 
-                tijdstip = wl.get("rotatie_tijdstip", "08:00")
-                try:
-                    uur, minuut = map(int, tijdstip.split(":"))
-                except ValueError:
-                    continue
-
-                # Alleen uitvoeren op het juiste tijdstip (binnen de minuut)
-                if now.hour != uur or now.minute != minuut:
-                    continue
-
-                # Niet dubbel roteren op dezelfde dag
                 laatste = wl.get("laatste_rotatie", "")
-                if laatste:
-                    try:
-                        laatste_dt = datetime.datetime.fromisoformat(laatste)
-                        if laatste_dt.date() == now.date():
-                            continue
-                    except ValueError:
-                        pass
 
-                # Bij wekelijks: check de dag
-                if schema == "wekelijks":
-                    dag = wl.get("rotatie_dag", 0)
-                    if now.weekday() != dag:
+                if schema == "elk_uur":
+                    # Elk uur roteren, op minuut 0
+                    if now.minute != 0:
                         continue
+
+                    # Niet dubbel roteren in hetzelfde uur
+                    if laatste:
+                        try:
+                            laatste_dt = datetime.datetime.fromisoformat(laatste)
+                            if (laatste_dt.date() == now.date()
+                                    and laatste_dt.hour == now.hour):
+                                continue
+                        except ValueError:
+                            pass
+                else:
+                    tijdstip = wl.get("rotatie_tijdstip", "08:00")
+                    try:
+                        uur, minuut = map(int, tijdstip.split(":"))
+                    except ValueError:
+                        continue
+
+                    # Alleen uitvoeren op het juiste tijdstip (binnen de minuut)
+                    if now.hour != uur or now.minute != minuut:
+                        continue
+
+                    # Niet dubbel roteren op dezelfde dag
+                    if laatste:
+                        try:
+                            laatste_dt = datetime.datetime.fromisoformat(laatste)
+                            if laatste_dt.date() == now.date():
+                                continue
+                        except ValueError:
+                            pass
+
+                    # Bij wekelijks: check de dag
+                    if schema == "wekelijks":
+                        dag = wl.get("rotatie_dag", 0)
+                        if now.weekday() != dag:
+                            continue
 
                 # Roteer!
                 print(f"[Scheduler] Rotatie starten voor: {wl['naam']}")
