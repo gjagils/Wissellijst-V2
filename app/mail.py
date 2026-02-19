@@ -77,6 +77,6 @@ def send_rotation_mail(to_address, wissellijst_naam, verwijderd, toegevoegd):
             server.starttls()
             server.login(SMTP_USER, SMTP_PASS)
             server.send_message(msg)
-        print(f"[Mail] Rotatie-mail verstuurd naar {to_address}")
+        print(f"[Mail] Rotatie-mail verstuurd naar {to_address}", flush=True)
     except Exception as e:
-        print(f"[Mail] Fout bij versturen naar {to_address}: {e}")
+        print(f"[Mail] Fout bij versturen naar {to_address}: {e}", flush=True)

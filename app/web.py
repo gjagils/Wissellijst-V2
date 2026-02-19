@@ -630,7 +630,7 @@ def api_roteren(lijst_id):
 
             # Stuur e-mail notificatie als ingeschakeld
             if wl.get("mail_na_rotatie") and wl.get("mail_adres") and result.get("status") == "ok":
-                print(f"[Mail] Rotatie-mail versturen naar {wl['mail_adres']} voor '{wl['naam']}'...")
+                print(f"[Mail] Rotatie-mail versturen naar {wl['mail_adres']} voor '{wl['naam']}'...", flush=True)
                 send_rotation_mail(
                     wl["mail_adres"], wl["naam"],
                     result.get("verwijderd_detail", []),
@@ -644,7 +644,7 @@ def api_roteren(lijst_id):
                     reason.append("geen mail_adres")
                 if result.get("status") != "ok":
                     reason.append(f"status={result.get('status')}")
-                print(f"[Mail] Geen mail verstuurd voor '{wl.get('naam')}': {', '.join(reason)}")
+                print(f"[Mail] Geen mail verstuurd voor '{wl.get('naam')}': {', '.join(reason)}", flush=True)
 
         except Exception as e:
             _tasks[task_id]["status"] = "fout"
@@ -730,7 +730,7 @@ def _check_schedules():
 
                     # Stuur e-mail notificatie als ingeschakeld
                     if wl.get("mail_na_rotatie") and wl.get("mail_adres") and result.get("status") == "ok":
-                        print(f"[Scheduler] Rotatie-mail versturen naar {wl['mail_adres']} voor '{wl['naam']}'...")
+                        print(f"[Scheduler] Rotatie-mail versturen naar {wl['mail_adres']} voor '{wl['naam']}'...", flush=True)
                         send_rotation_mail(
                             wl["mail_adres"], wl["naam"],
                             result.get("verwijderd_detail", []),
@@ -744,7 +744,7 @@ def _check_schedules():
                             reason.append("geen mail_adres")
                         if result.get("status") != "ok":
                             reason.append(f"status={result.get('status')}")
-                        print(f"[Scheduler] Geen mail verstuurd voor '{wl['naam']}': {', '.join(reason)}")
+                        print(f"[Scheduler] Geen mail verstuurd voor '{wl['naam']}': {', '.join(reason)}", flush=True)
 
                 except Exception as e:
                     print(f"[Scheduler] Rotatie fout voor {wl['naam']}: {e}")
