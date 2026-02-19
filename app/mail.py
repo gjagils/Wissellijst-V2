@@ -20,7 +20,11 @@ def send_rotation_mail(to_address, wissellijst_naam, verwijderd, toegevoegd):
         verwijderd: lijst van dicts met 'artiest' en 'titel'
         toegevoegd: lijst van dicts met 'artiest' en 'titel'
     """
-    if not mail_configured() or not to_address:
+    if not mail_configured():
+        print(f"[Mail] SMTP niet geconfigureerd (host={SMTP_HOST!r}, user={SMTP_USER!r}, pass={'***' if SMTP_PASS else None})", flush=True)
+        return
+    if not to_address:
+        print("[Mail] Geen ontvanger-adres opgegeven, mail overgeslagen", flush=True)
         return
 
     subject = f"Rotatie voltooid: {wissellijst_naam}"
@@ -73,9 +77,13 @@ def send_rotation_mail(to_address, wissellijst_naam, verwijderd, toegevoegd):
     msg.attach(MIMEText(html, "html", "utf-8"))
 
     try:
+        print(f"[Mail] Verbinden met {SMTP_HOST}:{SMTP_PORT}...", flush=True)
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+            print("[Mail] STARTTLS...", flush=True)
             server.starttls()
+            print("[Mail] Login...", flush=True)
             server.login(SMTP_USER, SMTP_PASS)
+            print("[Mail] Verzenden...", flush=True)
             server.send_message(msg)
         print(f"[Mail] Rotatie-mail verstuurd naar {to_address}", flush=True)
     except Exception as e:
