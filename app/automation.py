@@ -1,3 +1,4 @@
+import datetime
 import os
 import re
 
@@ -17,8 +18,43 @@ def get_decade(release_date):
         return "Unknown"
 
 
-def rotate_playlist(playlist_id, queue_file=None, history_file=None):
-    """Verwijder de oudste nummers en voeg nieuwe toe uit de wachtrij."""
+def _get_all_playlist_items(sp, playlist_id):
+    """Haal alle items uit een playlist op (met paginering)."""
+    items = []
+    result = sp.playlist_items(playlist_id, limit=100)
+    items.extend(result["items"])
+    while result.get("next"):
+        result = sp.next(result)
+        items.extend(result["items"])
+    return items
+
+
+def _count_expired_tracks(sp, playlist_id, max_days=30):
+    """Tel hoeveel tracks ouder zijn dan max_days in de playlist."""
+    items = _get_all_playlist_items(sp, playlist_id)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    count = 0
+    for item in items:
+        added_at = item.get("added_at")
+        if not added_at:
+            continue
+        try:
+            added_dt = datetime.datetime.fromisoformat(added_at.replace("Z", "+00:00"))
+            if (now - added_dt).days >= max_days:
+                count += 1
+        except (ValueError, TypeError):
+            continue
+    return count
+
+
+def rotate_playlist(playlist_id, queue_file=None, history_file=None,
+                    sort_by_age=False):
+    """Verwijder de oudste nummers en voeg nieuwe toe uit de wachtrij.
+
+    Args:
+        sort_by_age: Als True, sorteer op added_at (oudste eerst) i.p.v.
+                     playlist-positie. Gebruikt voor discovery.
+    """
     queue_file = queue_file or QUEUE_FILE
     history_file = history_file or HISTORY_FILE
 
@@ -48,8 +84,17 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None):
     block_size = len(new_uris)
     sp = get_spotify_client()
 
-    # Haal huidige playlist op en log de oudste naar historie
-    current_items = sp.playlist_items(playlist_id, limit=50)["items"]
+    # Haal huidige playlist op
+    if sort_by_age:
+        current_items = _get_all_playlist_items(sp, playlist_id)
+        # Sorteer op added_at (oudste eerst)
+        current_items.sort(
+            key=lambda x: x.get("added_at", "9999"),
+        )
+    else:
+        current_items = sp.playlist_items(playlist_id, limit=50)["items"]
+
+    # Log de te verwijderen tracks naar historie
     tracks_to_remove = []
     removed_tracks_detail = []
 
@@ -62,6 +107,16 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None):
             artist = track["artists"][0]["name"]
             name = track["name"]
             uri = track["uri"]
+            added_at = item.get("added_at", "")
+            if sort_by_age and added_at:
+                try:
+                    added_dt = datetime.datetime.fromisoformat(
+                        added_at.replace("Z", "+00:00"))
+                    days_ago = (datetime.datetime.now(datetime.timezone.utc) - added_dt).days
+                    print(f"  [discovery-remove] {artist} - {name} "
+                          f"({days_ago} dagen oud)", flush=True)
+                except (ValueError, TypeError):
+                    pass
             hf.write(f"{decade} - {artist} - {name} - {uri}\n")
             tracks_to_remove.append(uri)
             removed_tracks_detail.append({"artiest": artist, "titel": name})
@@ -205,20 +260,34 @@ def rotate_and_regenerate(wl):
 def _rotate_discovery(wl, queue_file, history_file):
     """Discovery rotatie: eerst analyseren, dan roteren.
 
-    1. Genereer nieuw blok (scan bronlijsten + GPT scoring)
-    2. Schrijf naar wachtrij
-    3. Roteer playlist (oud eruit, wachtrij erin)
+    Verwijdert de oudste tracks (op added_at). Tracks ouder dan 30 dagen
+    worden sowieso verwijderd, ook als dat meer is dan blok_grootte.
+
+    1. Bepaal effectieve blokgrootte (rekening houdend met >30 dagen)
+    2. Genereer nieuw blok (scan bronlijsten + GPT scoring)
+    3. Schrijf naar wachtrij
+    4. Roteer playlist (oudste eruit, wachtrij erin)
     """
     from discovery import generate_discovery_block
 
     sp = get_spotify_client()
+    block_size = wl.get("blok_grootte", 10)
+
+    # Stap 0: Tel tracks ouder dan 30 dagen
+    expired_count = _count_expired_tracks(sp, wl["playlist_id"], max_days=30)
+    effective_size = max(block_size, expired_count)
+
+    if expired_count > block_size:
+        print(f"[discovery-rotate] {expired_count} tracks ouder dan 30 dagen "
+              f"(blok_grootte={block_size}), verhoogd naar {effective_size}",
+              flush=True)
 
     # Stap 1: Genereer nieuw blok
-    print(f"[discovery-rotate] Stap 1: Analyseren voor {wl['naam']}...",
-          flush=True)
+    print(f"[discovery-rotate] Stap 1: Analyseren voor {wl['naam']} "
+          f"({effective_size} tracks)...", flush=True)
     block = generate_discovery_block(
         sp, wl, history_file,
-        block_size=wl.get("blok_grootte", 10),
+        block_size=effective_size,
     )
 
     if not block:
@@ -235,10 +304,10 @@ def _rotate_discovery(wl, queue_file, history_file):
     print(f"[discovery-rotate] Stap 2: {len(block)} tracks in wachtrij",
           flush=True)
 
-    # Stap 3: Roteer
-    print(f"[discovery-rotate] Stap 3: Roteren...", flush=True)
+    # Stap 3: Roteer (sort_by_age=True: oudste op added_at eerst)
+    print(f"[discovery-rotate] Stap 3: Roteren (oudste eerst)...", flush=True)
     result = rotate_playlist(wl["playlist_id"], queue_file=queue_file,
-                             history_file=history_file)
+                             history_file=history_file, sort_by_age=True)
     result["nieuw_blok"] = True
     return result
 
