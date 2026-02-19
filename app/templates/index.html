@@ -280,7 +280,10 @@
         </div>
 
         <div id="tab-content-historie" class="card hidden">
-            <h2>Historie</h2>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h2 style="margin:0;">Historie</h2>
+                <button class="btn btn-sm" style="background:#ff5252; font-size:0.85em;" onclick="wisHistorie()">Wis historie</button>
+            </div>
             <p class="historie-count" id="historie-count"></p>
             <div class="historie-lijst" id="historie-lijst"></div>
         </div>
@@ -1443,6 +1446,26 @@
                 }
             } catch (e) {
                 toonMelding('Kan historie niet laden: ' + e.message, 'fout');
+            }
+        }
+
+        async function wisHistorie() {
+            if (!activeLijstId) return;
+            if (!confirm('Weet je zeker dat je de volledige historie wilt wissen? Alle nummers worden weer beschikbaar voor rotatie.')) return;
+
+            try {
+                const res = await fetch(`/api/wissellijsten/${activeLijstId}/historie`, {
+                    method: 'DELETE',
+                });
+                const result = await res.json();
+                if (result.error) {
+                    toonMelding(result.error, 'fout');
+                } else {
+                    toonMelding(result.tekst, 'succes');
+                    laadHistorie();
+                }
+            } catch (e) {
+                toonMelding('Historie wissen mislukt: ' + e.message, 'fout');
             }
         }
 
