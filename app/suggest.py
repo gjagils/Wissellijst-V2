@@ -40,15 +40,23 @@ def get_spotify_client():
 
 
 def search_spotify(sp, artist, title):
-    """Zoek een track op Spotify en geef de URI terug.
+    """Zoek een track op Spotify en geef info terug.
 
     Probeert eerst strikt (track: + artist:), dan breder als fallback.
+
+    Returns: dict met {uri, release_date} of None als niet gevonden.
     """
+    def _extract(track):
+        return {
+            "uri": track["uri"],
+            "release_date": track.get("album", {}).get("release_date", ""),
+        }
+
     # Strikte zoekopdracht
     results = sp.search(q=f"track:{title} artist:{artist}", limit=1, type="track")
     tracks = results.get("tracks", {}).get("items", [])
     if tracks:
-        return tracks[0]["uri"]
+        return _extract(tracks[0])
 
     # Fallback: bredere zoekopdracht
     results = sp.search(q=f"{artist} {title}", limit=5, type="track")
@@ -56,7 +64,7 @@ def search_spotify(sp, artist, title):
     artist_lower = artist.lower()
     for t in tracks:
         if any(artist_lower in a["name"].lower() for a in t.get("artists", [])):
-            return t["uri"]
+            return _extract(t)
     return None
 
 
@@ -150,6 +158,25 @@ def ask_gpt_for_suggestions(categorieen, exclude_artists, blocked_artists=None, 
     return response.choices[0].message.content.strip().split("\n")
 
 
+def _extract_decade(category):
+    """Haal decennium (bijv. '80s') uit een categorienaam.
+
+    Werkt voor '80s', '80s heeft in de top 40', etc.
+    Returns: decade string of None als geen decennium in de categorie zit.
+    """
+    match = re.match(r'(\d{2}s)', category)
+    return match.group(1) if match else None
+
+
+def _get_decade(release_date):
+    """Bepaal het decennium op basis van release datum, bijv. '90s'."""
+    try:
+        year = int(release_date.split("-")[0])
+        return f"{str((year // 10) * 10)[2:]}s"
+    except Exception:
+        return None
+
+
 def _match_categorie(raw_cat, categorieen, filled):
     """Match een GPT-categorie aan de originele categorieën.
 
@@ -233,15 +260,27 @@ def generate_block(sp, playlist_id, categorieen, history_file=None, max_per_arti
                   flush=True)
             continue
 
-        uri = search_spotify(sp, artist, title)
-        if not uri:
+        result = search_spotify(sp, artist, title)
+        if not result:
             print(f"  [block] Skip {artist} - {title}: niet gevonden op Spotify",
                   flush=True)
             continue
+        uri = result["uri"]
+        release_date = result["release_date"]
         if uri in used_uris:
             print(f"  [block] Skip {artist} - {title}: al in historie",
                   flush=True)
             continue
+
+        # Decade check: klopt het releasejaar bij de gevraagde categorie?
+        expected_decade = _extract_decade(matched_cat)
+        if expected_decade and release_date:
+            actual_decade = _get_decade(release_date)
+            if actual_decade and actual_decade != expected_decade:
+                print(f"  [block] Skip {artist} - {title}: "
+                      f"release {release_date} ({actual_decade}) past niet bij {expected_decade}",
+                      flush=True)
+                continue
 
         filled[matched_cat] = {
             "categorie": matched_cat,
