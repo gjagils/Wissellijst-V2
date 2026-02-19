@@ -40,10 +40,24 @@ def get_spotify_client():
 
 
 def search_spotify(sp, artist, title):
-    """Zoek een track op Spotify en geef de URI terug."""
+    """Zoek een track op Spotify en geef de URI terug.
+
+    Probeert eerst strikt (track: + artist:), dan breder als fallback.
+    """
+    # Strikte zoekopdracht
     results = sp.search(q=f"track:{title} artist:{artist}", limit=1, type="track")
     tracks = results.get("tracks", {}).get("items", [])
-    return tracks[0]["uri"] if tracks else None
+    if tracks:
+        return tracks[0]["uri"]
+
+    # Fallback: bredere zoekopdracht
+    results = sp.search(q=f"{artist} {title}", limit=5, type="track")
+    tracks = results.get("tracks", {}).get("items", [])
+    artist_lower = artist.lower()
+    for t in tracks:
+        if any(artist_lower in a["name"].lower() for a in t.get("artists", [])):
+            return t["uri"]
+    return None
 
 
 def _parse_history_line(line):
@@ -91,21 +105,36 @@ def load_history(history_file=None):
     return artists, uris, artist_counts
 
 
-def ask_gpt_for_suggestions(categorieen, exclude_artists, per_categorie=3):
+def ask_gpt_for_suggestions(categorieen, exclude_artists, blocked_artists=None, per_categorie=5):
     """Vraag GPT om suggesties op basis van vrije categorieën.
 
     Args:
-        per_categorie: aantal alternatieven per categorie (standaard 3)
+        blocked_artists: artiesten die absoluut niet mogen (max bereikt)
+        per_categorie: aantal alternatieven per categorie (standaard 5)
     """
     client = OpenAI(api_key=OPENAI_API_KEY)
 
     cat_beschrijving = ", ".join(f"{i+1}. {c}" for i, c in enumerate(categorieen))
     totaal = len(categorieen) * per_categorie
 
+    blocked_list = blocked_artists or []
+
     prompt = (
         f"Geef {per_categorie} muziek suggesties per categorie, dus {totaal} regels totaal.\n"
         f"Categorieën: {cat_beschrijving}\n"
-        f"NIET GEBRUIKEN (staan in playlist of historie): {', '.join(exclude_artists[:80])}.\n"
+    )
+    if blocked_list:
+        prompt += (
+            f"VERBODEN artiesten (max per artiest bereikt, ABSOLUUT NIET GEBRUIKEN): "
+            f"{', '.join(blocked_list)}.\n"
+        )
+    if exclude_artists:
+        prompt += (
+            f"Liever niet (staan al in playlist): {', '.join(exclude_artists[:60])}.\n"
+        )
+    prompt += (
+        "Wees creatief en kies GEEN voor de hand liggende artiesten. "
+        "Denk aan minder bekende maar geldige nummers.\n"
         "Zorg dat alle artiesten VERSCHILLEND zijn.\n"
         "Syntax per regel: categorie | artiest | titel\n"
         "Geef ALLEEN de regels, geen extra tekst."
@@ -170,10 +199,14 @@ def generate_block(sp, playlist_id, categorieen, history_file=None, max_per_arti
     else:
         blocked_artists = []
 
-    # Meer artiesten meesturen naar GPT voor betere uitsluiting
-    exclude = list(set(active_artists + history_artists[-50:] + blocked_artists))
+    # Stuur geblokkeerde artiesten apart (strenger) en rest als gewone exclude
+    exclude = list(set(active_artists + history_artists[-50:]))
 
-    raw_suggestions = ask_gpt_for_suggestions(categorieen, exclude, per_categorie=3)
+    raw_suggestions = ask_gpt_for_suggestions(
+        categorieen, exclude,
+        blocked_artists=blocked_artists,
+        per_categorie=5,
+    )
 
     filled = {}  # categorie -> result dict
     used_uris = set(history_uris)
