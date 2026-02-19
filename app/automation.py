@@ -1,4 +1,5 @@
 import os
+import re
 
 from config import (
     QUEUE_FILE, HISTORY_FILE,
@@ -98,6 +99,52 @@ def rotate_playlist(playlist_id, queue_file=None, history_file=None):
     }
 
 
+def _check_queue_decades(sp, queue_file):
+    """Check of tracks in wachtrij bij het juiste decennium horen. Alleen logging."""
+    if not os.path.exists(queue_file) or os.stat(queue_file).st_size == 0:
+        return
+
+    entries = []
+    with open(queue_file, "r", encoding="utf-8") as f:
+        for line in f:
+            parsed = _parse_history_line(line)
+            if parsed:
+                entries.append(parsed)
+
+    if not entries:
+        return
+
+    uris = [e["uri"] for e in entries]
+    try:
+        tracks_info = sp.tracks(uris)["tracks"]
+    except Exception as exc:
+        print(f"  [decade-check] Kon tracks niet ophalen: {exc}", flush=True)
+        return
+
+    for entry, track in zip(entries, tracks_info):
+        if not track:
+            continue
+
+        release_date = track.get("album", {}).get("release_date", "")
+        actual_decade = get_decade(release_date)
+
+        # Haal verwacht decennium uit de categorienaam (bijv. "80s" uit "80s heeft in de...")
+        match = re.match(r'(\d{2}s)', entry["categorie"])
+        expected = match.group(1) if match else None
+
+        artist = entry["artiest"]
+        title = entry["titel"]
+
+        if expected and actual_decade != "Unknown" and actual_decade != expected:
+            print(f"  [decade-check] ✗ {artist} - {title}: "
+                  f"categorie={expected} maar release={release_date} ({actual_decade})",
+                  flush=True)
+        elif expected:
+            print(f"  [decade-check] ✓ {artist} - {title}: "
+                  f"{actual_decade} past bij {expected}",
+                  flush=True)
+
+
 def rotate_and_regenerate(wl):
     """Roteer een wissellijst en genereer een nieuw wachtrij-blok.
 
@@ -117,7 +164,13 @@ def rotate_and_regenerate(wl):
     if is_discovery:
         return _rotate_discovery(wl, queue_file, history_file)
 
-    # --- Categorie flow: roteer eerst, genereer daarna ---
+    # --- Categorie flow: decade-check, roteer, genereer ---
+
+    # Stap 0: Decade check op wachtrij (logging)
+    sp = get_spotify_client()
+    print(f"[decade-check] Controleer wachtrij voor {wl.get('naam', wl['id'])}...",
+          flush=True)
+    _check_queue_decades(sp, queue_file)
 
     # Stap 1: Roteer
     result = rotate_playlist(wl["playlist_id"], queue_file=queue_file,
@@ -127,7 +180,6 @@ def rotate_and_regenerate(wl):
         return result
 
     # Stap 2: Genereer nieuw blokje voor de wachtrij
-    sp = get_spotify_client()
     block = None
     max_retries = 3
     for _ in range(max_retries):

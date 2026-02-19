@@ -498,9 +498,10 @@ def api_wachtrij_vervang(lijst_id):
     # Zoek op Spotify
     try:
         sp = get_spotify_client()
-        uri = search_spotify(sp, artiest, titel)
-        if not uri:
+        result = search_spotify(sp, artiest, titel)
+        if not result:
             return jsonify({"error": f"Track '{artiest} - {titel}' niet gevonden op Spotify"}), 404
+        uri = result["uri"]
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
