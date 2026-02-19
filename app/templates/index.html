@@ -790,7 +790,14 @@
             btnVullen.textContent = vulLabel;
             if (playlist && playlist.tracks >= verwachteTracks) {
                 btnVullen.disabled = true;
-                btnVullen.textContent = `Playlist is vol (${verwachteTracks} tracks)`;
+                btnVullen.textContent = `Playlist is vol (${playlist.tracks}/${verwachteTracks} tracks)`;
+            } else if (playlist && playlist.tracks > 0) {
+                const bestaandeBlokken = Math.floor(playlist.tracks / blockSize);
+                const nog = aantalBlokken - bestaandeBlokken;
+                btnVullen.disabled = false;
+                btnVullen.textContent = nog > 0
+                    ? `Aanvullen (nog ${nog} blokken)`
+                    : vulLabel;
             } else {
                 btnVullen.disabled = false;
             }
